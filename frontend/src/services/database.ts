@@ -436,9 +436,9 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
     // Process each row in the CSV
     for (const row of csvData) {
       try {
-        // Find barcode/SKU column (flexible naming)
-        const barcodeValue = findColumnValue(row, ['barcode', 'sku', 'code', 'product_code'])
-        const quantityValue = findColumnValue(row, ['quantity', 'qty', 'stock', 'count'])
+        // Find barcode/SKU column (using store-specific mapping)
+        const barcodeValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'barcode')
+        const quantityValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'quantity')
 
         if (!barcodeValue || quantityValue === null || quantityValue === undefined) {
           results.push({
@@ -469,13 +469,17 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
 
         if (!product) {
           // Create new product if it doesn't exist
+          const nameValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'name')
+          const categoryValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'category')
+          const priceValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'price')
+          
           const newProduct: CreateProductForm = {
             sku: barcodeValue,
             barcode: barcodeValue,
-            name: findColumnValue(row, ['name', 'product_name', 'title']) || `Product ${barcodeValue}`,
-            category: findColumnValue(row, ['category']) || undefined,
-            unit_price: parseFloat(findColumnValue(row, ['price', 'unit_price']) || '0') || undefined,
-            cost_price: parseFloat(findColumnValue(row, ['cost', 'cost_price']) || '0') || undefined
+            name: nameValue || `Product ${barcodeValue}`,
+            category: categoryValue || undefined,
+            unit_price: priceValue ? parseFloat(priceValue) || undefined : undefined,
+            cost_price: priceValue ? parseFloat(priceValue) || undefined : undefined
           }
 
           product = await createProduct(newProduct)
@@ -563,9 +567,9 @@ export async function uploadSupplierDelivery(
     const receiptItems: any[] = []
     for (const row of csvData) {
       try {
-        const barcodeValue = findColumnValue(row, ['barcode', 'sku', 'code', 'product_code'])
-        const quantityValue = findColumnValue(row, ['quantity', 'qty', 'delivery_qty', 'received'])
-        const unitCostValue = findColumnValue(row, ['unit_cost', 'cost', 'price'])
+        const barcodeValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'barcode')
+        const quantityValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'quantity')
+        const unitCostValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'price')
 
         if (!barcodeValue || quantityValue === null || quantityValue === undefined) {
           results.push({
@@ -598,11 +602,14 @@ export async function uploadSupplierDelivery(
 
         if (!product) {
           // Create new product if it doesn't exist
+          const nameValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'name')
+          const categoryValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'category')
+          
           const newProduct: CreateProductForm = {
             sku: barcodeValue,
             barcode: barcodeValue,
-            name: findColumnValue(row, ['name', 'product_name', 'title']) || `Product ${barcodeValue}`,
-            category: findColumnValue(row, ['category']) || undefined,
+            name: nameValue || `Product ${barcodeValue}`,
+            category: categoryValue || undefined,
             unit_price: unitCost || undefined,
             cost_price: unitCost || undefined
           }
@@ -619,12 +626,15 @@ export async function uploadSupplierDelivery(
         }
 
         // Add to receipt items
+        const batchValue = findColumnValue(row, ['batch', 'batch_number', 'lot'])
+        const expiryValue = findColumnValue(row, ['expiry', 'expiry_date', 'exp_date'])
+        
         receiptItems.push({
           product_id: product.id,
           quantity,
           unit_cost: unitCost,
-          batch_number: findColumnValue(row, ['batch', 'batch_number', 'lot']),
-          expiry_date: findColumnValue(row, ['expiry', 'expiry_date', 'exp_date'])
+          batch_number: batchValue,
+          expiry_date: expiryValue
         })
 
         if (!results.find(r => r.barcode === barcodeValue && r.status === 'created')) {
@@ -683,10 +693,94 @@ export async function uploadSupplierDelivery(
   }
 }
 
+// Store-specific CSV mapping interface
+interface StoreCsvMapping {
+  id: string
+  store_id: string
+  mapping_name: string
+  barcode_columns: string[]
+  name_columns: string[]
+  quantity_columns: string[]
+  price_columns?: string[]
+  category_columns?: string[]
+}
+
+// Get store-specific CSV mapping
+async function getStoreCsvMapping(storeId: string, mappingType: 'current_stock' | 'supplier_delivery'): Promise<StoreCsvMapping | null> {
+  const { data, error } = await supabase
+    .from('store_csv_mappings')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('mapping_name', mappingType)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('Could not load store CSV mapping:', error)
+    return null
+  }
+  return data
+}
+
+// Enhanced helper function to find column value with store-specific mapping
+async function findColumnValueWithMapping(
+  row: any, 
+  storeId: string, 
+  mappingType: 'current_stock' | 'supplier_delivery',
+  columnType: 'barcode' | 'name' | 'quantity' | 'price' | 'category'
+): Promise<string | null> {
+  // Try to get store-specific mapping first
+  const storeMapping = await getStoreCsvMapping(storeId, mappingType)
+  
+  let possibleNames: string[] = []
+  
+  if (storeMapping) {
+    switch (columnType) {
+      case 'barcode':
+        possibleNames = storeMapping.barcode_columns
+        break
+      case 'name':
+        possibleNames = storeMapping.name_columns
+        break
+      case 'quantity':
+        possibleNames = storeMapping.quantity_columns
+        break
+      case 'price':
+        possibleNames = storeMapping.price_columns || []
+        break
+      case 'category':
+        possibleNames = storeMapping.category_columns || []
+        break
+    }
+  }
+  
+  // Fall back to default naming if no store-specific mapping
+  if (possibleNames.length === 0) {
+    switch (columnType) {
+      case 'barcode':
+        possibleNames = ['barcode', 'sku', 'code', 'product_code', 'Barcode']
+        break
+      case 'name':
+        possibleNames = ['name', 'product_name', 'title', 'Item name', 'item_name']
+        break
+      case 'quantity':
+        possibleNames = ['quantity', 'qty', 'stock', 'count', 'Quantity']
+        break
+      case 'price':
+        possibleNames = ['price', 'unit_price', 'cost', 'unit_cost']
+        break
+      case 'category':
+        possibleNames = ['category', 'type', 'group']
+        break
+    }
+  }
+  
+  return findColumnValue(row, possibleNames)
+}
+
 // Helper function to find column value with flexible naming
 function findColumnValue(row: any, possibleNames: string[]): string | null {
   for (const name of possibleNames) {
-    // Check exact match
+    // Check exact match (case-sensitive first for specific mappings like "Barcode")
     if (row[name] !== undefined && row[name] !== null && row[name] !== '') {
       return row[name].toString().trim()
     }
