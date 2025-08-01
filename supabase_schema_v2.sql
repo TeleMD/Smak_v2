@@ -276,6 +276,13 @@ RETURNS TRIGGER AS $$
 BEGIN
     -- Only log if quantity actually changed
     IF (TG_OP = 'UPDATE' AND OLD.quantity != NEW.quantity) OR TG_OP = 'INSERT' THEN
+        -- Skip logging for current stock uploads (check for a special session variable)
+        IF current_setting('app.skip_inventory_movements', true) = 'true' THEN
+            -- Update last_updated timestamp but skip movement logging
+            NEW.last_updated = NOW();
+            RETURN NEW;
+        END IF;
+        
         INSERT INTO inventory_movements (
             store_id,
             product_id,

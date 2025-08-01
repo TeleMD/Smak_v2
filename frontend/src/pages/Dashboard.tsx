@@ -150,7 +150,7 @@ export default function Dashboard() {
                           {movement.product?.name || 'Unknown Product'}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {movement.store?.name || 'Unknown Store'} • {movement.movement_type}
+                          {movement.movement_type}
                         </p>
                       </div>
                       <div className="text-right">
@@ -189,7 +189,7 @@ export default function Dashboard() {
                           {item.product?.name || 'Unknown Product'}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {item.store?.name || 'Unknown Store'}
+                          {item.available_quantity} available
                         </p>
                       </div>
                       <div className="text-right">
@@ -226,7 +226,7 @@ export default function Dashboard() {
                           {receipt.supplier_name}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {receipt.store?.name || 'Unknown Store'} • {receipt.total_items} items
+                          {receipt.total_items} items
                         </p>
                       </div>
                       <div className="text-right">

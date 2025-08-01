@@ -473,10 +473,16 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           const categoryValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'category')
           const priceValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'price')
           
+          // Fix multiline product names - only keep the first line
+          let productName = nameValue || `Product ${barcodeValue}`
+          if (typeof productName === 'string') {
+            productName = productName.split('\n')[0].trim()
+          }
+          
           const newProduct: CreateProductForm = {
             sku: barcodeValue,
             barcode: barcodeValue,
-            name: nameValue || `Product ${barcodeValue}`,
+            name: productName,
             category: categoryValue || undefined,
             unit_price: priceValue ? parseFloat(priceValue) || undefined : undefined,
             cost_price: priceValue ? parseFloat(priceValue) || undefined : undefined
@@ -493,8 +499,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           })
         }
 
-        // Update inventory for this store
-        await updateInventoryQuantity(storeId, product.id, quantity)
+        // Update inventory for this store (skip movements for current stock uploads)
+        await updateInventoryQuantitySkipMovements(storeId, product.id, quantity)
         
         if (!results.find(r => r.barcode === barcodeValue && r.status === 'created')) {
           results.push({
@@ -801,4 +807,18 @@ function findColumnValue(row: any, possibleNames: string[]): string | null {
     }
   }
   return null
+}
+
+// Function to update inventory quantity without creating movement logs (for current stock uploads)
+export async function updateInventoryQuantitySkipMovements(storeId: string, productId: string, quantity: number): Promise<void> {
+  const { error } = await supabase.rpc('update_inventory_skip_movements', {
+    p_store_id: storeId,
+    p_product_id: productId,
+    p_quantity: quantity
+  })
+
+  if (error) {
+    console.error('Error updating inventory (skip movements):', error)
+    throw error
+  }
 } 
