@@ -1,4 +1,3 @@
-import React from 'react'
 import { supabase } from '../utils/supabase'
 import { LogOut, ShoppingCart, User } from 'lucide-react'
 

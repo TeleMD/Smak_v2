@@ -1,7 +1,7 @@
 import { supabase } from '../utils/supabase'
 import { 
-  Store, Product, CurrentInventory, StockReceipt, StockReceiptItem,
-  SalesTransaction, SalesTransactionItem, InventoryMovement, SyncJob,
+  Store, Product, CurrentInventory, StockReceipt,
+  SalesTransaction, InventoryMovement, SyncJob,
   CreateProductForm, CreateStoreForm, CreateReceiptForm, 
   InventoryAdjustmentForm, DashboardStats
 } from '../types'
@@ -152,8 +152,7 @@ export async function getInventoryByStore(storeId: string): Promise<CurrentInven
 export async function updateInventoryQuantity(
   storeId: string, 
   productId: string, 
-  newQuantity: number,
-  notes?: string
+  newQuantity: number
 ): Promise<CurrentInventory> {
   const { data, error } = await supabase
     .from('current_inventory')

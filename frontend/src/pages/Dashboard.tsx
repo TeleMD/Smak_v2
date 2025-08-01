@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Store, Warehouse, Package, AlertTriangle, TrendingUp, 
-  Clock, ShoppingCart, Truck, BarChart3, Activity 
+  Truck, BarChart3, Activity 
 } from 'lucide-react'
 import { Store as StoreType, DashboardStats, CurrentInventory, StockReceipt, InventoryMovement } from '../types'
 import { getDashboardStats, getStores, getCurrentInventory, getStockReceipts, getInventoryMovements } from '../services/database'
