@@ -1,11 +1,9 @@
 {
-  "name": "smak-v2",
   "version": 2,
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "installCommand": "npm install",
   "framework": "vite",
-  "functions": {},
   "rewrites": [
     {
       "source": "/(.*)",
