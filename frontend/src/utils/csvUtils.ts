@@ -162,4 +162,60 @@ export function parseReceiptCSV(csvText: string): { data: any[], errors: string[
 export function parseSalesCSV(csvText: string): { data: any[], errors: string[] } {
   // Similar parsing logic for sales transaction CSV files
   return parseProductCSV(csvText)
+}
+
+// Enhanced CSV parsing for the new upload functionality
+export function parseCSV(file: File): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    
+    reader.onload = (event) => {
+      try {
+        const csvText = event.target?.result as string
+        const lines = csvText.trim().split('\n')
+        
+        if (lines.length < 2) {
+          reject(new Error('CSV must have at least a header row and one data row'))
+          return
+        }
+
+        // Auto-detect delimiter
+        const firstLine = lines[0]
+        const commaCount = (firstLine.match(/,/g) || []).length
+        const semicolonCount = (firstLine.match(/;/g) || []).length
+        const delimiter = semicolonCount > commaCount ? ';' : ','
+
+        // Parse headers
+        const headers = lines[0].split(delimiter)
+          .map(h => h.trim().replace(/^"/, '').replace(/"$/, ''))
+
+        // Parse data rows
+        const data: any[] = []
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim()
+          if (!line) continue // Skip empty lines
+          
+          const values = line.split(delimiter)
+            .map(v => v.trim().replace(/^"/, '').replace(/"$/, ''))
+          
+          const rowData: any = {}
+          headers.forEach((header, index) => {
+            rowData[header] = values[index] || ''
+          })
+          
+          data.push(rowData)
+        }
+
+        resolve(data)
+      } catch (error) {
+        reject(error)
+      }
+    }
+    
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'))
+    }
+    
+    reader.readAsText(file)
+  })
 } 

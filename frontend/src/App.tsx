@@ -4,12 +4,18 @@ import { supabase } from './utils/supabase'
 import AuthSection from './components/AuthSection'
 import Header from './components/Header'
 import Dashboard from './pages/Dashboard'
+import ShopManagement from './pages/ShopManagement'
+import ShopDetail from './pages/ShopDetail'
 import { UserProfile } from './types'
+
+type AppView = 'dashboard' | 'shops' | 'shop-detail'
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [currentView, setCurrentView] = useState<AppView>('dashboard')
+  const [selectedShopId, setSelectedShopId] = useState<string | null>(null)
 
   useEffect(() => {
     // Get initial session
@@ -168,12 +174,38 @@ function App() {
     )
   }
 
+  const navigateToShops = () => {
+    setCurrentView('shops')
+    setSelectedShopId(null)
+  }
+
+  const navigateToShopDetail = (shopId: string) => {
+    setSelectedShopId(shopId)
+    setCurrentView('shop-detail')
+  }
+
+  const navigateToDashboard = () => {
+    setCurrentView('dashboard')
+    setSelectedShopId(null)
+  }
+
   // Show main application for approved users
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header user={user} />
+      <Header 
+        user={user} 
+        currentView={currentView}
+        onNavigateToDashboard={navigateToDashboard}
+        onNavigateToShops={navigateToShops}
+      />
       <main>
-        <Dashboard />
+        {currentView === 'dashboard' && <Dashboard />}
+        {currentView === 'shops' && (
+          <ShopManagement onSelectShop={navigateToShopDetail} />
+        )}
+        {currentView === 'shop-detail' && selectedShopId && (
+          <ShopDetail shopId={selectedShopId} onBack={navigateToShops} />
+        )}
       </main>
     </div>
   )
