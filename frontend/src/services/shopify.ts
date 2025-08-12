@@ -3,46 +3,45 @@ import {
   ShopifyStockSyncResult, ShopifyPushResult, CurrentInventory
 } from '../types'
 
-// Shopify API configuration
-const SHOPIFY_ACCESS_TOKEN = import.meta.env.VITE_SHOPIFY_ACCESS_TOKEN || ''
-const SHOPIFY_STORE_URL = import.meta.env.VITE_SHOPIFY_STORE_URL || 'https://admin.shopify.com/store/qajg9w-pn'
-const SHOPIFY_API_VERSION = '2024-01'
+// Shopify API configuration - now handled by the serverless proxy
+// The proxy function will read environment variables server-side
 
-// Extract store domain from URL
-function getStoreDomain(storeUrl: string): string {
-  // Extract store name from URL like https://admin.shopify.com/store/qajg9w-pn
-  const match = storeUrl.match(/\/store\/([^\/]+)/)
-  if (match) {
-    return `${match[1]}.myshopify.com`
-  }
-  throw new Error('Invalid Shopify store URL format')
-}
-
-const SHOPIFY_DOMAIN = getStoreDomain(SHOPIFY_STORE_URL)
-
-// Helper function to make Shopify API requests
+// Helper function to make Shopify API requests via proxy
 async function shopifyApiRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
-  if (!SHOPIFY_ACCESS_TOKEN) {
-    throw new Error('Shopify access token not configured. Please set VITE_SHOPIFY_ACCESS_TOKEN environment variable.')
-  }
-
-  const url = `https://${SHOPIFY_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}${endpoint}`
+  const method = options.method || 'GET'
+  const body = options.body
   
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-      ...options.headers,
-    },
-  })
+  try {
+    // Use our serverless proxy function to avoid CORS issues
+    const response = await fetch('/api/shopify-proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        endpoint,
+        method,
+        body: body ? JSON.parse(body as string) : undefined,
+      }),
+    })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Shopify API error: ${response.status} ${response.statusText} - ${errorText}`)
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `Proxy error: ${response.status} ${response.statusText}`)
+    }
+
+    return response.json()
+  } catch (error) {
+    console.error('Shopify API request failed:', error)
+    
+    // Check if it's a network/CORS error
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      throw new Error('Unable to connect to Shopify API proxy. Please check your internet connection and try again.')
+    }
+    
+    // Re-throw the original error if it's something else
+    throw error
   }
-
-  return response.json()
 }
 
 // =====================================================
@@ -247,7 +246,10 @@ export async function syncStoreStockToShopify(
 
 export async function testShopifyConnection(): Promise<boolean> {
   try {
+    console.log('Testing Shopify connection via proxy...')
+    
     await shopifyApiRequest('/shop.json')
+    console.log('Shopify connection test successful!')
     return true
   } catch (error) {
     console.error('Shopify connection test failed:', error)
