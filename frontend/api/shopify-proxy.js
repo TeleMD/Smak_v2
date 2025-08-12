@@ -20,12 +20,18 @@ export default async function handler(req, res) {
     }
 
     // Get credentials from environment variables
-    const accessToken = process.env.VITE_SHOPIFY_ACCESS_TOKEN
-    const storeUrl = process.env.VITE_SHOPIFY_STORE_URL
+    // Try both VITE_ prefixed and non-prefixed versions
+    const accessToken = process.env.VITE_SHOPIFY_ACCESS_TOKEN || process.env.SHOPIFY_ACCESS_TOKEN
+    const storeUrl = process.env.VITE_SHOPIFY_STORE_URL || process.env.SHOPIFY_STORE_URL
     
     if (!accessToken || !storeUrl) {
       return res.status(500).json({ 
-        error: 'Shopify credentials not configured in environment variables' 
+        error: 'Shopify credentials not configured in environment variables',
+        debug: {
+          hasAccessToken: !!accessToken,
+          hasStoreUrl: !!storeUrl,
+          envKeys: Object.keys(process.env).filter(key => key.includes('SHOPIFY'))
+        }
       })
     }
 
@@ -62,7 +68,8 @@ export default async function handler(req, res) {
     console.error('Shopify proxy error:', error)
     res.status(500).json({ 
       error: 'Internal server error', 
-      details: error.message 
+      details: error.message,
+      stack: error.stack?.split('\n').slice(0, 3) // Limited stack trace for debugging
     })
   }
 }

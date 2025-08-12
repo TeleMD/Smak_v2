@@ -12,6 +12,18 @@ async function shopifyApiRequest(endpoint: string, options: RequestInit = {}): P
   const body = options.body
   
   try {
+    // Parse body appropriately
+    let parsedBody = undefined
+    if (body) {
+      try {
+        // If it's a string, try to parse it as JSON
+        parsedBody = typeof body === 'string' ? JSON.parse(body) : body
+      } catch (e) {
+        // If parsing fails, use as-is
+        parsedBody = body
+      }
+    }
+    
     // Use our serverless proxy function to avoid CORS issues
     const response = await fetch('/api/shopify-proxy', {
       method: 'POST',
@@ -21,7 +33,7 @@ async function shopifyApiRequest(endpoint: string, options: RequestInit = {}): P
       body: JSON.stringify({
         endpoint,
         method,
-        body: body ? JSON.parse(body as string) : undefined,
+        body: parsedBody,
       }),
     })
 
