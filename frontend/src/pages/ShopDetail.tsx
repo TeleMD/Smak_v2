@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { 
   ArrowLeft, Package, Upload, BarChart3, 
-  AlertTriangle, Truck, Activity, RefreshCw 
+  AlertTriangle, Truck, Activity, RefreshCw, Share2
 } from 'lucide-react'
-import { Store as StoreType, CurrentInventory, StockReceipt, InventoryMovement } from '../types'
+import { Store as StoreType, CurrentInventory, StockReceipt, InventoryMovement, ShopifyStockSyncResult } from '../types'
 import { 
   getStore, getCurrentInventory, getStockReceipts, 
-  getInventoryMovements 
+  getInventoryMovements, syncStoreToShopify
 } from '../services/database'
 import CSVUploadModal from '../components/CSVUploadModal'
 
@@ -24,6 +24,9 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
   const [activeTab, setActiveTab] = useState<'inventory' | 'receipts' | 'movements'>('inventory')
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadType, setUploadType] = useState<'current_stock' | 'supplier_delivery'>('current_stock')
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<ShopifyStockSyncResult | null>(null)
+  const [showSyncResult, setShowSyncResult] = useState(false)
 
   useEffect(() => {
     loadShopData()
@@ -58,6 +61,28 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
   const openUploadModal = (type: 'current_stock' | 'supplier_delivery') => {
     setUploadType(type)
     setShowUploadModal(true)
+  }
+
+  const handleSyncToShopify = async () => {
+    if (!store) return
+    
+    setIsSyncing(true)
+    setSyncResult(null)
+    
+    try {
+      const result = await syncStoreToShopify(store.id)
+      setSyncResult(result)
+      setShowSyncResult(true)
+      
+      // Show success notification
+      console.log('Sync completed:', result)
+    } catch (error) {
+      console.error('Sync failed:', error)
+      // Show error notification
+      alert(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsSyncing(false)
+    }
   }
 
   if (loading) {
@@ -138,6 +163,22 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                 >
                   <Truck className="h-4 w-4 mr-2" />
                   Upload Supplier Delivery
+                </button>
+                <button
+                  onClick={handleSyncToShopify}
+                  disabled={isSyncing || inventory.length === 0}
+                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
+                    isSyncing || inventory.length === 0
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                >
+                  {isSyncing ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  ) : (
+                    <Share2 className="h-4 w-4 mr-2" />
+                  )}
+                  {isSyncing ? 'Syncing...' : 'Sync to Shopify'}
                 </button>
                 <button
                   onClick={loadShopData}
@@ -270,6 +311,15 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
           </div>
         </div>
       </div>
+
+      {/* Shopify Sync Result Modal */}
+      {showSyncResult && syncResult && (
+        <ShopifySyncResultModal
+          isOpen={showSyncResult}
+          onClose={() => setShowSyncResult(false)}
+          result={syncResult}
+        />
+      )}
 
       {/* CSV Upload Modal */}
       {showUploadModal && (
@@ -441,6 +491,162 @@ function MovementsTab({ movements }: { movements: InventoryMovement[] }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// Shopify Sync Result Modal Component
+function ShopifySyncResultModal({ 
+  isOpen, 
+  onClose, 
+  result 
+}: { 
+  isOpen: boolean
+  onClose: () => void
+  result: ShopifyStockSyncResult 
+}) {
+  if (!isOpen) return null
+
+  const successPercentage = result.total_products > 0 
+    ? Math.round((result.successful_updates / result.total_products) * 100)
+    : 0
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+        <div className="mt-3">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">
+              Shopify Sync Results
+            </h3>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Summary */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-gray-900">{result.total_products}</div>
+                <div className="text-sm text-gray-600">Total Products</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-green-600">{result.successful_updates}</div>
+                <div className="text-sm text-gray-600">Updated</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-red-600">{result.failed_updates}</div>
+                <div className="text-sm text-gray-600">Failed</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-orange-600">{result.skipped_products}</div>
+                <div className="text-sm text-gray-600">Skipped</div>
+              </div>
+            </div>
+            
+            <div className="mt-4">
+              <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Success Rate</span>
+                <span>{successPercentage}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-green-600 h-2 rounded-full" 
+                  style={{ width: `${successPercentage}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {result.shopify_location_name && (
+              <div className="mt-4 text-sm text-gray-600">
+                <span className="font-medium">Shopify Location:</span> {result.shopify_location_name}
+              </div>
+            )}
+
+            <div className="mt-2 text-sm text-gray-600">
+              <span className="font-medium">Processing Time:</span> {(result.processing_time_ms / 1000).toFixed(1)}s
+            </div>
+          </div>
+
+          {/* Error Message */}
+          {result.error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+              <div className="text-sm text-red-700">
+                <strong>Error:</strong> {result.error}
+              </div>
+            </div>
+          )}
+
+          {/* Results Table */}
+          <div className="max-h-96 overflow-y-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Barcode
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Message
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Quantity
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {result.results.map((item, index) => (
+                  <tr key={index}>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {item.barcode}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        item.status === 'success' ? 'bg-green-100 text-green-800' :
+                        item.status === 'error' ? 'bg-red-100 text-red-800' :
+                        'bg-orange-100 text-orange-800'
+                      }`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {item.message}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      {item.total_before !== undefined && item.total_after !== undefined ? (
+                        <span>
+                          {item.total_before} → {item.total_after}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Close Button */}
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={onClose}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

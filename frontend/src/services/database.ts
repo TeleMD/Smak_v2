@@ -3,8 +3,9 @@ import {
   Store, Product, CurrentInventory, StockReceipt,
   SalesTransaction, InventoryMovement, SyncJob,
   CreateProductForm, CreateStoreForm, CreateReceiptForm, 
-  InventoryAdjustmentForm, DashboardStats
+  InventoryAdjustmentForm, DashboardStats, ShopifyStockSyncResult
 } from '../types'
+import { syncStoreStockToShopify } from './shopify'
 
 // =====================================================
 // STORE MANAGEMENT
@@ -819,6 +820,76 @@ export async function updateInventoryQuantitySkipMovements(storeId: string, prod
 
   if (error) {
     console.error('Error updating inventory (skip movements):', error)
+    throw error
+  }
+}
+
+// =====================================================
+// SHOPIFY INTEGRATION
+// =====================================================
+
+export async function syncStoreToShopify(storeId: string): Promise<ShopifyStockSyncResult> {
+  try {
+    // Get store information
+    const store = await getStore(storeId)
+    if (!store) {
+      throw new Error('Store not found')
+    }
+
+    // Get current inventory for the store
+    const inventory = await getCurrentInventory(storeId)
+    if (inventory.length === 0) {
+      throw new Error('No inventory found for this store')
+    }
+
+    // Create a sync job record
+    const syncJob = await createSyncJob({
+      job_type: 'sync_inventory',
+      store_id: storeId,
+      status: 'processing',
+      total_records: inventory.length,
+      job_data: { 
+        sync_type: 'shopify_stock_sync',
+        store_name: store.name 
+      }
+    })
+
+    try {
+      // Perform the actual sync
+      const result = await syncStoreStockToShopify(storeId, store.name, inventory)
+
+      // Update sync job with results
+      await supabase
+        .from('sync_jobs')
+        .update({
+          status: 'completed',
+          processed_records: result.total_products,
+          successful_records: result.successful_updates,
+          failed_records: result.failed_updates,
+          completed_at: new Date().toISOString(),
+          job_data: {
+            ...syncJob.job_data,
+            result: result
+          }
+        })
+        .eq('id', syncJob.id)
+
+      return result
+    } catch (error) {
+      // Update sync job with error
+      await supabase
+        .from('sync_jobs')
+        .update({
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', syncJob.id)
+
+      throw error
+    }
+  } catch (error) {
+    console.error('Error syncing store to Shopify:', error)
     throw error
   }
 } 

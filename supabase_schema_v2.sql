@@ -406,11 +406,10 @@ CREATE POLICY "Authenticated users can modify sync jobs" ON sync_jobs
 -- SAMPLE DATA (OPTIONAL - FOR TESTING)
 -- =====================================================
 
--- Insert sample stores
+-- Insert sample stores (updated to reflect current shops)
 INSERT INTO stores (name, address, is_active) VALUES 
-('Main Store', '123 Main Street, City, State', true),
-('North Branch', '456 North Ave, City, State', true),
-('South Branch', '789 South Blvd, City, State', true);
+('Kalina', 'Kalina Shop Location', true),
+('Shop Demo', 'Shop Demo Location', true);
 
 -- Insert sample products
 INSERT INTO products (sku, barcode, name, category, unit_price, is_active) VALUES

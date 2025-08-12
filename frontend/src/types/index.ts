@@ -341,9 +341,60 @@ export interface ShopifyCredentials {
   updated_at?: string;
 }
 
+export interface ShopifyLocation {
+  id: number;
+  name: string;
+  address1?: string;
+  city?: string;
+  country?: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShopifyInventoryLevel {
+  inventory_item_id: number;
+  location_id: number;
+  available: number;
+}
+
+export interface ShopifyProduct {
+  id: number;
+  title: string;
+  vendor?: string;
+  product_type?: string;
+  created_at: string;
+  updated_at: string;
+  variants: ShopifyVariant[];
+}
+
+export interface ShopifyVariant {
+  id: number;
+  product_id: number;
+  title: string;
+  price: string;
+  sku?: string;
+  barcode?: string;
+  inventory_item_id: number;
+  inventory_management: string;
+  inventory_quantity: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShopifyInventoryItem {
+  id: number;
+  sku?: string;
+  created_at: string;
+  updated_at: string;
+  requires_shipping: boolean;
+  cost?: string;
+  tracked: boolean;
+}
+
 export interface ShopifyPushResult {
   barcode: string;
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'skipped';
   message: string;
   shopify_variant_id?: number;
   shopify_inventory_item_id?: number;
@@ -360,6 +411,20 @@ export interface ShopifyPushResult {
   }>;
   total_before?: number;
   total_after?: number;
+}
+
+export interface ShopifyStockSyncResult {
+  store_id: string;
+  store_name: string;
+  shopify_location_name?: string;
+  shopify_location_id?: number;
+  total_products: number;
+  successful_updates: number;
+  failed_updates: number;
+  skipped_products: number;
+  processing_time_ms: number;
+  results: ShopifyPushResult[];
+  error?: string;
 }
 
 export interface ShopifyPushSummary {
