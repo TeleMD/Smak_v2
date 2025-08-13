@@ -110,12 +110,13 @@ export async function getAllShopifyProducts(): Promise<ShopifyProduct[]> {
       if (products.length === 0) break
       
       allProducts = allProducts.concat(products)
+      console.log(`📊 Total loaded so far: ${allProducts.length} products`)
       
       if (products.length < limit) break
       
       page++
-      // Rate limiting: wait between requests
-      await new Promise(resolve => setTimeout(resolve, 200))
+      // Longer delay to be extra safe with rate limits
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
     
     console.log(`✅ Loaded ${allProducts.length} total products from ${page} pages`)
@@ -127,7 +128,14 @@ export async function getAllShopifyProducts(): Promise<ShopifyProduct[]> {
     return allProducts
   } catch (error) {
     console.error('❌ Error fetching all products:', error)
-    // Return partial results if we have some
+    console.log(`⚠️ Returning ${allProducts.length} partial results`)
+    
+    // If we got some products, cache them and return
+    if (allProducts.length > 0) {
+      shopifyProductsCache = allProducts
+      cacheTimestamp = now
+    }
+    
     return allProducts
   }
 }
@@ -136,10 +144,19 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
   try {
     console.log(`🔍 Searching for barcode: ${barcode}`)
     
-    // Get all products (from cache or API)
-    const products = await getAllShopifyProducts()
+    // Try to get all products, but fallback to first 250 if it fails
+    let products: ShopifyProduct[] = []
     
-    console.log(`📦 Searching through ${products.length} products`)
+    try {
+      products = await getAllShopifyProducts()
+      console.log(`📦 Searching through ${products.length} products (cached or full fetch)`)
+    } catch (error) {
+      console.warn(`⚠️ Failed to get all products, falling back to first 250:`, error)
+      // Fallback to simple approach 
+      const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=250`)
+      products = response.products || []
+      console.log(`📦 Searching through ${products.length} products (fallback)`)
+    }
     
     // Check products for matching barcodes
     for (const product of products) {

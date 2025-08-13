@@ -163,7 +163,19 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                   Upload Supplier Delivery
                 </button>
                 <button
-                  onClick={handleSyncToShopify}
+                  onClick={async () => {
+                    // Pre-load all products first to avoid rate limits during sync
+                    console.log('🔄 Pre-loading Shopify products...')
+                    try {
+                      const { getAllShopifyProducts } = await import('../services/shopify')
+                      await getAllShopifyProducts()
+                      console.log('✅ Products pre-loaded! Starting sync...')
+                      handleSyncToShopify()
+                    } catch (error) {
+                      console.error('❌ Failed to pre-load products:', error)
+                      alert('Failed to pre-load Shopify products. Please try again.')
+                    }
+                  }}
                   disabled={isSyncing || inventory.length === 0}
                   className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
                     isSyncing || inventory.length === 0
@@ -176,7 +188,7 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                   ) : (
                     <Share2 className="h-4 w-4 mr-2" />
                   )}
-                  {isSyncing ? 'Syncing...' : 'Sync to Shopify'}
+                  {isSyncing ? 'Syncing...' : 'Smart Sync'}
                 </button>
                 <button
                   onClick={async () => {
