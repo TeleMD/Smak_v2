@@ -85,42 +85,55 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
   try {
     console.log(`🔍 Searching for barcode: ${barcode}`)
     
-    // Search for products - increased limit and added barcode field
-    const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=250`)
-    const products: ShopifyProduct[] = response.products || []
+    let allProducts: ShopifyProduct[] = []
+    let page = 1
+    let hasMore = true
+    const limit = 250
     
-    console.log(`📦 Found ${products.length} products in Shopify`)
-    
-    // Log first few products for debugging
-    console.log('Sample products:', products.slice(0, 3).map(p => ({
-      title: p.title,
-      variants: p.variants?.map(v => ({ id: v.id, barcode: v.barcode }))
-    })))
-    
-    for (const product of products) {
-      if (product.variants) {
-        for (const variant of product.variants) {
-          // Try exact match and trimmed match
-          if (variant.barcode === barcode || variant.barcode?.trim() === barcode.trim()) {
-            console.log(`✅ Found variant for barcode ${barcode}:`, {
-              product_title: product.title,
-              variant_id: variant.id,
-              inventory_item_id: variant.inventory_item_id,
-              stored_barcode: variant.barcode
-            })
-            return variant
+    // Paginate through ALL products
+    while (hasMore) {
+      console.log(`📄 Fetching page ${page} (limit: ${limit})`)
+      
+      const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=${limit}&page=${page}`)
+      const products: ShopifyProduct[] = response.products || []
+      
+      if (products.length === 0) {
+        hasMore = false
+        break
+      }
+      
+      allProducts = allProducts.concat(products)
+      
+      // Check if this page has the product we're looking for
+      for (const product of products) {
+        if (product.variants) {
+          for (const variant of product.variants) {
+            // Try exact match and trimmed match
+            if (variant.barcode === barcode || variant.barcode?.trim() === barcode.trim()) {
+              console.log(`✅ Found variant for barcode ${barcode} on page ${page}:`, {
+                product_title: product.title,
+                variant_id: variant.id,
+                inventory_item_id: variant.inventory_item_id,
+                stored_barcode: variant.barcode
+              })
+              return variant
+            }
           }
         }
       }
+      
+      // Continue to next page if we got a full page
+      if (products.length < limit) {
+        hasMore = false
+      } else {
+        page++
+        // Add a small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
     }
     
+    console.log(`📦 Searched through ${allProducts.length} total products across ${page} pages`)
     console.log(`❌ No variant found for barcode: ${barcode}`)
-    
-    // Log all barcodes for debugging if not found
-    const allBarcodes = products.flatMap(p => 
-      p.variants?.map(v => v.barcode).filter(Boolean) || []
-    )
-    console.log(`📊 Available barcodes (first 10):`, allBarcodes.slice(0, 10))
     
     return null
   } catch (error) {
