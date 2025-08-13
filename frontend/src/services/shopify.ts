@@ -138,7 +138,7 @@ async function shopifyApiRequest(endpoint: string, options: RequestInit = {}): P
       }
       
       // If we've exhausted retries or it's not a retryable error, throw
-      if (retries >= RATE_LIMIT_CONFIG.maxRetries || !error.message.includes('429')) {
+      if (retries >= RATE_LIMIT_CONFIG.maxRetries || !(error instanceof Error && error.message.includes('429'))) {
         console.error('Shopify API request failed after retries:', error)
         throw error
       }
@@ -252,13 +252,13 @@ export async function searchProductsByBarcode(barcode: string): Promise<ShopifyP
       if (!query) continue
       
       try {
-        // Search using Shopify's built-in product search
+        // Search using Shopify's built-in product search by vendor field
         const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=50&vendor=${encodeURIComponent(query)}`)
-        const products = response.products || []
+        const products: ShopifyProduct[] = response.products || []
         
-        // Also try searching by product title/handle containing the barcode
+        // Also try searching by product title containing the barcode
         const titleResponse = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=50&title=${encodeURIComponent(query)}`)
-        const titleProducts = titleResponse.products || []
+        const titleProducts: ShopifyProduct[] = titleResponse.products || []
         
         allResults.push(...products, ...titleProducts)
         
@@ -282,7 +282,7 @@ export async function searchProductsByBarcode(barcode: string): Promise<ShopifyP
 }
 
 // Smart barcode matching with multiple strategies
-function matchesBarcode(shopifyBarcode: string, searchBarcode: string): { matches: boolean; strategy: string } {
+function matchesBarcode(shopifyBarcode: string | undefined, searchBarcode: string): { matches: boolean; strategy: string } {
   if (!shopifyBarcode || !searchBarcode) {
     return { matches: false, strategy: 'no_barcode' }
   }
@@ -327,7 +327,7 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
     for (const product of searchResults) {
       if (product.variants) {
         for (const variant of product.variants) {
-          const matchResult = matchesBarcode(variant.barcode || '', barcode)
+          const matchResult = matchesBarcode(variant.barcode, barcode)
           
           if (matchResult.matches) {
             console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match):`, {
@@ -362,7 +362,7 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
         for (const product of products) {
           if (product.variants) {
             for (const variant of product.variants) {
-              const matchResult = matchesBarcode(variant.barcode || '', barcode)
+              const matchResult = matchesBarcode(variant.barcode, barcode)
               
               if (matchResult.matches) {
                 console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match, page ${page}):`, {
@@ -508,12 +508,12 @@ export async function syncStoreStockToShopify(
 
     try {
       // Find the corresponding Shopify variant by barcode using optimized search
-      const shopifyVariant = await findShopifyVariantByBarcode(product.barcode)
+      const shopifyVariant = await findShopifyVariantByBarcode(product.barcode!)
       
       if (!shopifyVariant) {
         console.log(`❌ [${progress}] Product not found in Shopify: ${product.barcode}`)
         results.push({
-          barcode: product.barcode,
+          barcode: product.barcode!,
           status: 'skipped',
           message: 'Product not found in Shopify'
         })
@@ -543,7 +543,7 @@ export async function syncStoreStockToShopify(
       console.log(`✅ [${progress}] Updated inventory: ${inventoryBefore} → ${inventoryItem.available_quantity}`)
 
       results.push({
-        barcode: product.barcode,
+        barcode: product.barcode!,
         status: 'success',
         message: `Updated from ${inventoryBefore} to ${inventoryItem.available_quantity}`,
         shopify_variant_id: shopifyVariant.id,
@@ -589,7 +589,7 @@ export async function syncStoreStockToShopify(
       }
       
       results.push({
-        barcode: product.barcode,
+        barcode: product.barcode!,
         status: 'error',
         message: errorMessage,
         shopify_variant_id: undefined,
