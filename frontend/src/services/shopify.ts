@@ -85,104 +85,64 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
   try {
     console.log(`🔍 Searching for barcode: ${barcode}`)
     
-    let allProducts: ShopifyProduct[] = []
-    let page = 1
-    let hasMore = true
+    // Use a more targeted search with reasonable limits to avoid rate limiting
     const limit = 250
+    const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=${limit}`)
+    const products: ShopifyProduct[] = response.products || []
     
-    // Paginate through ALL products
-    while (hasMore) {
-      console.log(`📄 Fetching page ${page} (limit: ${limit})`)
-      
-      const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=${limit}&page=${page}`)
-      const products: ShopifyProduct[] = response.products || []
-      
-      if (products.length === 0) {
-        hasMore = false
-        break
-      }
-      
-      allProducts = allProducts.concat(products)
-      
-      // Check if this page has the product we're looking for
-      for (const product of products) {
-        if (product.variants) {
-          for (const variant of product.variants) {
-            // Try multiple matching strategies
-            const shopifyBarcode = variant.barcode
-            if (!shopifyBarcode) continue
-            
-            // Strategy 1: Exact match
-            if (shopifyBarcode === barcode || shopifyBarcode.trim() === barcode.trim()) {
-              console.log(`✅ Found variant for barcode ${barcode} on page ${page} (exact match):`, {
-                product_title: product.title,
-                variant_id: variant.id,
-                inventory_item_id: variant.inventory_item_id,
-                stored_barcode: shopifyBarcode
-              })
-              return variant
-            }
-            
-            // Strategy 2: Remove leading zeros and compare
-            const normalizedShopify = shopifyBarcode.replace(/^0+/, '')
-            const normalizedSearch = barcode.replace(/^0+/, '')
-            if (normalizedShopify === normalizedSearch && normalizedShopify.length > 0) {
-              console.log(`✅ Found variant for barcode ${barcode} on page ${page} (normalized match):`, {
-                product_title: product.title,
-                variant_id: variant.id,
-                inventory_item_id: variant.inventory_item_id,
-                stored_barcode: shopifyBarcode,
-                normalized_match: `${normalizedSearch} = ${normalizedShopify}`
-              })
-              return variant
-            }
-            
-            // Strategy 3: Case insensitive alphanumeric only
-            const alphaNumShopify = shopifyBarcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-            const alphaNumSearch = barcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-            if (alphaNumShopify === alphaNumSearch && alphaNumShopify.length > 0) {
-              console.log(`✅ Found variant for barcode ${barcode} on page ${page} (alphanumeric match):`, {
-                product_title: product.title,
-                variant_id: variant.id,
-                inventory_item_id: variant.inventory_item_id,
-                stored_barcode: shopifyBarcode,
-                alphanumeric_match: `${alphaNumSearch} = ${alphaNumShopify}`
-              })
-              return variant
-            }
+    console.log(`📦 Searching through ${products.length} products (first ${limit})`)
+    
+    // Check products for matching barcodes
+    for (const product of products) {
+      if (product.variants) {
+        for (const variant of product.variants) {
+          // Try multiple matching strategies
+          const shopifyBarcode = variant.barcode
+          if (!shopifyBarcode) continue
+          
+          // Strategy 1: Exact match
+          if (shopifyBarcode === barcode || shopifyBarcode.trim() === barcode.trim()) {
+            console.log(`✅ Found variant for barcode ${barcode} (exact match):`, {
+              product_title: product.title,
+              variant_id: variant.id,
+              inventory_item_id: variant.inventory_item_id,
+              stored_barcode: shopifyBarcode
+            })
+            return variant
+          }
+          
+          // Strategy 2: Remove leading zeros and compare
+          const normalizedShopify = shopifyBarcode.replace(/^0+/, '')
+          const normalizedSearch = barcode.replace(/^0+/, '')
+          if (normalizedShopify === normalizedSearch && normalizedShopify.length > 0) {
+            console.log(`✅ Found variant for barcode ${barcode} (normalized match):`, {
+              product_title: product.title,
+              variant_id: variant.id,
+              inventory_item_id: variant.inventory_item_id,
+              stored_barcode: shopifyBarcode,
+              normalized_match: `${normalizedSearch} = ${normalizedShopify}`
+            })
+            return variant
+          }
+          
+          // Strategy 3: Case insensitive alphanumeric only
+          const alphaNumShopify = shopifyBarcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+          const alphaNumSearch = barcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+          if (alphaNumShopify === alphaNumSearch && alphaNumShopify.length > 0) {
+            console.log(`✅ Found variant for barcode ${barcode} (alphanumeric match):`, {
+              product_title: product.title,
+              variant_id: variant.id,
+              inventory_item_id: variant.inventory_item_id,
+              stored_barcode: shopifyBarcode,
+              alphanumeric_match: `${alphaNumSearch} = ${alphaNumShopify}`
+            })
+            return variant
           }
         }
       }
-      
-      // Continue to next page if we got a full page
-      if (products.length < limit) {
-        hasMore = false
-      } else {
-        page++
-        // Add a small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
     }
     
-    console.log(`📦 Searched through ${allProducts.length} total products across ${page} pages`)
-    console.log(`❌ No variant found for barcode: ${barcode}`)
-    
-    // Log sample of available barcodes for debugging
-    const allBarcodes = allProducts.flatMap(p => 
-      p.variants?.map(v => v.barcode).filter(Boolean) || []
-    )
-    console.log(`📊 Total barcodes in Shopify: ${allBarcodes.length}`)
-    console.log(`🔍 Sample Shopify barcodes:`, allBarcodes.slice(0, 20))
-    console.log(`🎯 Looking for barcode: "${barcode}" (length: ${barcode.length})`)
-    
-    // Check for similar barcodes (partial matches)
-    const similarBarcodes = allBarcodes.filter(bc => 
-      bc && (bc.includes(barcode) || barcode.includes(bc))
-    )
-    if (similarBarcodes.length > 0) {
-      console.log(`🔗 Found similar barcodes:`, similarBarcodes.slice(0, 10))
-    }
-    
+    console.log(`❌ No variant found for barcode: ${barcode} in first ${limit} products`)
     return null
   } catch (error) {
     console.error('Error finding Shopify variant by barcode:', error)
