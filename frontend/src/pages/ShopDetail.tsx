@@ -163,19 +163,7 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                   Upload Supplier Delivery
                 </button>
                 <button
-                  onClick={async () => {
-                    // Pre-load all products first to avoid rate limits during sync
-                    console.log('🔄 Pre-loading Shopify products...')
-                    try {
-                      const { getAllShopifyProducts } = await import('../services/shopify')
-                      await getAllShopifyProducts()
-                      console.log('✅ Products pre-loaded! Starting sync...')
-                      handleSyncToShopify()
-                    } catch (error) {
-                      console.error('❌ Failed to pre-load products:', error)
-                      alert('Failed to pre-load Shopify products. Please try again.')
-                    }
-                  }}
+                  onClick={handleSyncToShopify}
                   disabled={isSyncing || inventory.length === 0}
                   className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
                     isSyncing || inventory.length === 0
@@ -188,68 +176,44 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                   ) : (
                     <Share2 className="h-4 w-4 mr-2" />
                   )}
-                  {isSyncing ? 'Syncing...' : 'Smart Sync'}
+                  {isSyncing ? 'Syncing...' : 'Sync to Shopify'}
                 </button>
                 <button
                   onClick={async () => {
                     try {
-                      console.log('🔍 DIAGNOSTIC: Starting barcode comparison...')
+                      console.log('🧪 TESTING: New optimized sync...')
                       
-                      // Get sample of your inventory barcodes
-                      const sampleInventory = inventory.slice(0, 10)
-                      console.log('📦 Sample inventory barcodes from Smak v2:', 
-                        sampleInventory.map(i => ({
-                          name: i.product?.name,
-                          barcode: i.product?.barcode,
-                          quantity: i.available_quantity
-                        }))
-                      )
+                      // Test with a sample barcode from inventory
+                      const sampleItem = inventory.find(i => i.product?.barcode)
+                      if (!sampleItem?.product?.barcode) {
+                        alert('No products with barcodes found to test')
+                        return
+                      }
                       
-                      console.log('🛍️ Fetching Shopify sample...')
+                      const testBarcode = sampleItem.product.barcode
+                      console.log(`🔍 Testing with barcode: ${testBarcode}`)
                       
-                      // Get sample of Shopify barcodes
-                      const response = await fetch('/api/shopify-proxy', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          endpoint: '/products.json?fields=id,title,variants&limit=10',
-                          method: 'GET'
-                        }),
-                      })
+                      const { testShopifySyncOptimizations } = await import('../services/shopify')
+                      const result = await testShopifySyncOptimizations(testBarcode)
                       
-                      if (response.ok) {
-                        const data = await response.json()
-                        const shopifyProducts = data.products || []
-                        console.log('🛍️ Sample Shopify products with barcodes:', 
-                          shopifyProducts.map((p: any) => ({
-                            title: p.title,
-                            variants: p.variants?.map((v: any) => ({
-                              barcode: v.barcode,
-                              sku: v.sku
-                            }))
-                          }))
-                        )
-                        
-                        // Also log total counts for comparison
-                        const allBarcodes = shopifyProducts.flatMap((p: any) => 
-                          p.variants?.map((v: any) => v.barcode).filter(Boolean) || []
-                        )
-                        console.log(`📊 Total barcodes in sample: ${allBarcodes.length}`)
-                        console.log(`📊 All sample barcodes:`, allBarcodes)
-                        
-                        alert(`Debug complete! Check console for details. Found ${shopifyProducts.length} Shopify products in sample.`)
+                      console.log('🧪 Test result:', result)
+                      
+                      if (result.success) {
+                        const message = result.variantFound 
+                          ? `✅ Success! Found variant in ${result.searchTime}ms` 
+                          : `ℹ️ Search completed in ${result.searchTime}ms (no variant found)`
+                        alert(message)
                       } else {
-                        console.error('❌ Shopify API error:', response.status, response.statusText)
-                        alert(`Shopify API error: ${response.status}`)
+                        alert(`❌ Test failed: ${result.error}`)
                       }
                     } catch (error) {
-                      console.error('❌ Debug error:', error)
-                      alert(`Debug failed: ${error}`)
+                      console.error('❌ Test error:', error)
+                      alert(`Test failed: ${error}`)
                     }
                   }}
                   className="ml-2 inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                 >
-                  🔍 Debug
+                  🧪 Test
                 </button>
                 <button
                   onClick={loadShopData}

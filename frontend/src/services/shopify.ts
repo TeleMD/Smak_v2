@@ -6,54 +6,148 @@ import {
 // Shopify API configuration - now handled by the serverless proxy
 // The proxy function will read environment variables server-side
 
-// Helper function to make Shopify API requests via proxy
+// Rate limiting configuration
+const RATE_LIMIT_CONFIG = {
+  maxCallsPerSecond: 2, // Shopify allows 2 calls per second
+  bucketSize: 40, // Standard bucket size
+  baseDelay: 500, // Base delay between calls (500ms = 2 calls/second)
+  maxRetries: 5,
+  maxBackoffDelay: 30000 // Max 30 seconds backoff
+}
+
+// Rate limiter state
+let rateLimitState = {
+  calls: [] as number[],
+  retryCount: 0
+}
+
+// Helper function to implement exponential backoff
+function calculateBackoffDelay(retryCount: number): number {
+  const baseDelay = 1000 // Start with 1 second
+  const maxDelay = RATE_LIMIT_CONFIG.maxBackoffDelay
+  const delay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay)
+  
+  // Add jitter to prevent thundering herd
+  const jitter = Math.random() * 0.1 * delay
+  return Math.floor(delay + jitter)
+}
+
+// Helper function to check if we should rate limit
+function shouldRateLimit(): boolean {
+  const now = Date.now()
+  const oneSecondAgo = now - 1000
+  
+  // Clean old calls
+  rateLimitState.calls = rateLimitState.calls.filter(time => time > oneSecondAgo)
+  
+  // Check if we're at the limit
+  return rateLimitState.calls.length >= RATE_LIMIT_CONFIG.maxCallsPerSecond
+}
+
+// Helper function to wait for rate limit
+async function waitForRateLimit(): Promise<void> {
+  while (shouldRateLimit()) {
+    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_CONFIG.baseDelay))
+  }
+  rateLimitState.calls.push(Date.now())
+}
+
+// Helper function to make Shopify API requests via proxy with proper rate limiting
 async function shopifyApiRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
   const method = options.method || 'GET'
   const body = options.body
   
-  try {
-    // Parse body appropriately
-    let parsedBody = undefined
-    if (body) {
-      try {
-        // If it's a string, try to parse it as JSON
-        parsedBody = typeof body === 'string' ? JSON.parse(body) : body
-      } catch (e) {
-        // If parsing fails, use as-is
-        parsedBody = body
+  // Apply rate limiting before making the request
+  await waitForRateLimit()
+  
+  let retries = 0
+  
+  while (retries <= RATE_LIMIT_CONFIG.maxRetries) {
+    try {
+      // Parse body appropriately
+      let parsedBody = undefined
+      if (body) {
+        try {
+          // If it's a string, try to parse it as JSON
+          parsedBody = typeof body === 'string' ? JSON.parse(body) : body
+        } catch (e) {
+          // If parsing fails, use as-is
+          parsedBody = body
+        }
       }
-    }
-    
-    // Use our serverless proxy function to avoid CORS issues
-    const response = await fetch('/api/shopify-proxy', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        endpoint,
-        method,
-        body: parsedBody,
-      }),
-    })
+      
+      console.log(`🌐 API Request: ${method} ${endpoint} (attempt ${retries + 1})`)
+      
+      // Use our serverless proxy function to avoid CORS issues
+      const response = await fetch('/api/shopify-proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          endpoint,
+          method,
+          body: parsedBody,
+        }),
+      })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `Proxy error: ${response.status} ${response.statusText}`)
-    }
+      if (response.status === 429) {
+        // Rate limit hit - implement exponential backoff
+        const backoffDelay = calculateBackoffDelay(retries)
+        console.warn(`⚠️ Rate limit hit (429). Waiting ${backoffDelay}ms before retry ${retries + 1}/${RATE_LIMIT_CONFIG.maxRetries}`)
+        
+        await new Promise(resolve => setTimeout(resolve, backoffDelay))
+        retries++
+        continue
+      }
 
-    return response.json()
-  } catch (error) {
-    console.error('Shopify API request failed:', error)
-    
-    // Check if it's a network/CORS error
-    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-      throw new Error('Unable to connect to Shopify API proxy. Please check your internet connection and try again.')
+      if (!response.ok) {
+        const errorData = await response.json()
+        
+        // For 400/422 errors, don't retry
+        if (response.status === 400 || response.status === 422) {
+          throw new Error(errorData.error || `Shopify API error: ${response.status} ${response.statusText}`)
+        }
+        
+        // For other errors, retry if we haven't exceeded max retries
+        if (retries < RATE_LIMIT_CONFIG.maxRetries) {
+          console.warn(`⚠️ API error ${response.status}. Retrying in ${RATE_LIMIT_CONFIG.baseDelay}ms...`)
+          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_CONFIG.baseDelay))
+          retries++
+          continue
+        }
+        
+        throw new Error(errorData.error || `Proxy error: ${response.status} ${response.statusText}`)
+      }
+
+      // Reset retry count on success
+      rateLimitState.retryCount = 0
+      console.log(`✅ API Request successful: ${method} ${endpoint}`)
+      return response.json()
+      
+    } catch (error) {
+      // Check if it's a network/CORS error
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        if (retries < RATE_LIMIT_CONFIG.maxRetries) {
+          console.warn(`⚠️ Network error. Retrying in ${RATE_LIMIT_CONFIG.baseDelay}ms...`)
+          await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_CONFIG.baseDelay))
+          retries++
+          continue
+        }
+        throw new Error('Unable to connect to Shopify API proxy. Please check your internet connection and try again.')
+      }
+      
+      // If we've exhausted retries or it's not a retryable error, throw
+      if (retries >= RATE_LIMIT_CONFIG.maxRetries || !error.message.includes('429')) {
+        console.error('Shopify API request failed after retries:', error)
+        throw error
+      }
+      
+      retries++
     }
-    
-    // Re-throw the original error if it's something else
-    throw error
   }
+  
+  throw new Error('Maximum retries exceeded')
 }
 
 // =====================================================
@@ -140,67 +234,108 @@ export async function getAllShopifyProducts(): Promise<ShopifyProduct[]> {
   }
 }
 
-export async function findShopifyVariantByBarcode(barcode: string): Promise<ShopifyVariant | null> {
+// Direct product search by barcode - much more efficient than loading all products
+export async function searchProductsByBarcode(barcode: string): Promise<ShopifyProduct[]> {
   try {
-    console.log(`🔍 Searching for barcode: ${barcode}`)
+    console.log(`🔍 Direct search for barcode: ${barcode}`)
     
-    // Try to get all products, but fallback to first 250 if it fails
-    let products: ShopifyProduct[] = []
+    // Try multiple search strategies with Shopify's product search
+    const searchQueries = [
+      barcode, // Exact barcode
+      barcode.replace(/^0+/, ''), // Remove leading zeros
+      barcode.replace(/[^a-zA-Z0-9]/g, '') // Alphanumeric only
+    ].filter((query, index, arr) => arr.indexOf(query) === index) // Remove duplicates
     
-    try {
-      products = await getAllShopifyProducts()
-      console.log(`📦 Searching through ${products.length} products (cached or full fetch)`)
-    } catch (error) {
-      console.warn(`⚠️ Failed to get all products, falling back to first 250:`, error)
-      // Fallback to simple approach 
-      const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=250`)
-      products = response.products || []
-      console.log(`📦 Searching through ${products.length} products (fallback)`)
+    const allResults: ShopifyProduct[] = []
+    
+    for (const query of searchQueries) {
+      if (!query) continue
+      
+      try {
+        // Search using Shopify's built-in product search
+        const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=50&vendor=${encodeURIComponent(query)}`)
+        const products = response.products || []
+        
+        // Also try searching by product title/handle containing the barcode
+        const titleResponse = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=50&title=${encodeURIComponent(query)}`)
+        const titleProducts = titleResponse.products || []
+        
+        allResults.push(...products, ...titleProducts)
+        
+        console.log(`📦 Found ${products.length + titleProducts.length} products for query: ${query}`)
+      } catch (error) {
+        console.warn(`⚠️ Search failed for query "${query}":`, error)
+      }
     }
     
-    // Check products for matching barcodes
-    for (const product of products) {
+    // Remove duplicates based on product ID
+    const uniqueProducts = allResults.filter((product, index, arr) => 
+      arr.findIndex(p => p.id === product.id) === index
+    )
+    
+    console.log(`📊 Total unique products found: ${uniqueProducts.length}`)
+    return uniqueProducts
+  } catch (error) {
+    console.error('Error searching products by barcode:', error)
+    return []
+  }
+}
+
+// Smart barcode matching with multiple strategies
+function matchesBarcode(shopifyBarcode: string, searchBarcode: string): { matches: boolean; strategy: string } {
+  if (!shopifyBarcode || !searchBarcode) {
+    return { matches: false, strategy: 'no_barcode' }
+  }
+  
+  // Strategy 1: Exact match
+  if (shopifyBarcode === searchBarcode || shopifyBarcode.trim() === searchBarcode.trim()) {
+    return { matches: true, strategy: 'exact' }
+  }
+  
+  // Strategy 2: Remove leading zeros and compare
+  const normalizedShopify = shopifyBarcode.replace(/^0+/, '')
+  const normalizedSearch = searchBarcode.replace(/^0+/, '')
+  if (normalizedShopify === normalizedSearch && normalizedShopify.length > 0) {
+    return { matches: true, strategy: 'normalized' }
+  }
+  
+  // Strategy 3: Case insensitive alphanumeric only
+  const alphaNumShopify = shopifyBarcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  const alphaNumSearch = searchBarcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  if (alphaNumShopify === alphaNumSearch && alphaNumShopify.length > 0) {
+    return { matches: true, strategy: 'alphanumeric' }
+  }
+  
+  // Strategy 4: Partial match (for cases where one might contain the other)
+  if (shopifyBarcode.includes(searchBarcode) || searchBarcode.includes(shopifyBarcode)) {
+    if (Math.abs(shopifyBarcode.length - searchBarcode.length) <= 2) { // Similar lengths
+      return { matches: true, strategy: 'partial' }
+    }
+  }
+  
+  return { matches: false, strategy: 'no_match' }
+}
+
+export async function findShopifyVariantByBarcode(barcode: string): Promise<ShopifyVariant | null> {
+  try {
+    console.log(`🔍 Smart search for barcode: ${barcode}`)
+    
+    // First, try direct product search (much more efficient)
+    const searchResults = await searchProductsByBarcode(barcode)
+    
+    // Search through the targeted results
+    for (const product of searchResults) {
       if (product.variants) {
         for (const variant of product.variants) {
-          // Try multiple matching strategies
-          const shopifyBarcode = variant.barcode
-          if (!shopifyBarcode) continue
+          const matchResult = matchesBarcode(variant.barcode || '', barcode)
           
-          // Strategy 1: Exact match
-          if (shopifyBarcode === barcode || shopifyBarcode.trim() === barcode.trim()) {
-            console.log(`✅ Found variant for barcode ${barcode} (exact match):`, {
+          if (matchResult.matches) {
+            console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match):`, {
               product_title: product.title,
               variant_id: variant.id,
               inventory_item_id: variant.inventory_item_id,
-              stored_barcode: shopifyBarcode
-            })
-            return variant
-          }
-          
-          // Strategy 2: Remove leading zeros and compare
-          const normalizedShopify = shopifyBarcode.replace(/^0+/, '')
-          const normalizedSearch = barcode.replace(/^0+/, '')
-          if (normalizedShopify === normalizedSearch && normalizedShopify.length > 0) {
-            console.log(`✅ Found variant for barcode ${barcode} (normalized match):`, {
-              product_title: product.title,
-              variant_id: variant.id,
-              inventory_item_id: variant.inventory_item_id,
-              stored_barcode: shopifyBarcode,
-              normalized_match: `${normalizedSearch} = ${normalizedShopify}`
-            })
-            return variant
-          }
-          
-          // Strategy 3: Case insensitive alphanumeric only
-          const alphaNumShopify = shopifyBarcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-          const alphaNumSearch = barcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-          if (alphaNumShopify === alphaNumSearch && alphaNumShopify.length > 0) {
-            console.log(`✅ Found variant for barcode ${barcode} (alphanumeric match):`, {
-              product_title: product.title,
-              variant_id: variant.id,
-              inventory_item_id: variant.inventory_item_id,
-              stored_barcode: shopifyBarcode,
-              alphanumeric_match: `${alphaNumSearch} = ${alphaNumShopify}`
+              stored_barcode: variant.barcode,
+              match_strategy: matchResult.strategy
             })
             return variant
           }
@@ -208,7 +343,51 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
       }
     }
     
-    console.log(`❌ No variant found for barcode: ${barcode} in ${products.length} products`)
+    // If direct search didn't work, try a broader search with pagination (limited)
+    console.log(`🔄 Barcode not found in targeted search, trying broader search...`)
+    
+    let page = 1
+    const maxPages = 3 // Limit to first 750 products (250 * 3) to avoid timeouts
+    
+    while (page <= maxPages) {
+      console.log(`📄 Searching page ${page}/${maxPages}...`)
+      
+      try {
+        const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=250&page=${page}`)
+        const products: ShopifyProduct[] = response.products || []
+        
+        if (products.length === 0) break
+        
+        // Search through this page
+        for (const product of products) {
+          if (product.variants) {
+            for (const variant of product.variants) {
+              const matchResult = matchesBarcode(variant.barcode || '', barcode)
+              
+              if (matchResult.matches) {
+                console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match, page ${page}):`, {
+                  product_title: product.title,
+                  variant_id: variant.id,
+                  inventory_item_id: variant.inventory_item_id,
+                  stored_barcode: variant.barcode,
+                  match_strategy: matchResult.strategy
+                })
+                return variant
+              }
+            }
+          }
+        }
+        
+        if (products.length < 250) break // Last page
+        page++
+        
+      } catch (error) {
+        console.warn(`⚠️ Error searching page ${page}:`, error)
+        break
+      }
+    }
+    
+    console.log(`❌ No variant found for barcode: ${barcode} after searching ${(page - 1) * 250} products`)
     return null
   } catch (error) {
     console.error('Error finding Shopify variant by barcode:', error)
@@ -256,8 +435,30 @@ export async function syncStoreStockToShopify(
   let failedUpdates = 0
   let skippedProducts = 0
 
+  console.log(`🚀 Starting optimized sync for ${inventory.length} products to store: ${storeName}`)
+
   // Find the Shopify location that matches the store name
-  const shopifyLocation = await findShopifyLocationByName(storeName)
+  let shopifyLocation
+  try {
+    shopifyLocation = await findShopifyLocationByName(storeName)
+  } catch (error) {
+    console.error('Error finding Shopify location:', error)
+    return {
+      store_id: storeId,
+      store_name: storeName,
+      total_products: inventory.length,
+      successful_updates: 0,
+      failed_updates: 0,
+      skipped_products: inventory.length,
+      processing_time_ms: Date.now() - startTime,
+      results: inventory.map(item => ({
+        barcode: item.product?.barcode || item.product?.sku || 'unknown',
+        status: 'skipped' as const,
+        message: `Error finding Shopify location: ${error instanceof Error ? error.message : 'Unknown error'}`
+      })),
+      error: `Error finding Shopify location: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }
+  }
   
   if (!shopifyLocation) {
     return {
@@ -277,30 +478,40 @@ export async function syncStoreStockToShopify(
     }
   }
 
-  console.log(`🚀 Starting sync for ${inventory.length} products to location: ${shopifyLocation.name}`)
+  console.log(`📍 Found Shopify location: ${shopifyLocation.name} (ID: ${shopifyLocation.id})`)
   
-  // Process each inventory item
-  for (const inventoryItem of inventory) {
-    const product = inventoryItem.product
-    if (!product || !product.barcode) {
-      console.log(`⚠️ Skipping product: missing barcode`, { product: product?.name || 'Unknown' })
+  // Filter out products without barcodes upfront
+  const validInventory = inventory.filter(item => item.product?.barcode)
+  const invalidCount = inventory.length - validInventory.length
+  
+  if (invalidCount > 0) {
+    console.log(`⚠️ Skipping ${invalidCount} products without barcodes`)
+    for (let i = 0; i < invalidCount; i++) {
       results.push({
-        barcode: product?.sku || 'unknown',
+        barcode: 'unknown',
         status: 'skipped',
         message: 'Product missing barcode'
       })
-      skippedProducts++
-      continue
     }
+    skippedProducts += invalidCount
+  }
 
-    console.log(`🔄 Processing: ${product.name} (${product.barcode}) - Quantity: ${inventoryItem.available_quantity}`)
+  console.log(`🔄 Processing ${validInventory.length} valid products...`)
+  
+  // Process each inventory item with optimized error handling
+  for (let i = 0; i < validInventory.length; i++) {
+    const inventoryItem = validInventory[i]
+    const product = inventoryItem.product!
+    const progress = `${i + 1}/${validInventory.length}`
+    
+    console.log(`🔄 [${progress}] Processing: ${product.name} (${product.barcode}) - Quantity: ${inventoryItem.available_quantity}`)
 
     try {
-      // Find the corresponding Shopify variant by barcode
+      // Find the corresponding Shopify variant by barcode using optimized search
       const shopifyVariant = await findShopifyVariantByBarcode(product.barcode)
       
       if (!shopifyVariant) {
-        console.log(`❌ Product not found in Shopify: ${product.barcode}`)
+        console.log(`❌ [${progress}] Product not found in Shopify: ${product.barcode}`)
         results.push({
           barcode: product.barcode,
           status: 'skipped',
@@ -310,11 +521,17 @@ export async function syncStoreStockToShopify(
         continue
       }
 
+      console.log(`✅ [${progress}] Found Shopify variant: ${shopifyVariant.id}`)
+
       // Get current inventory levels for this item
-      const currentLevels = await getInventoryLevels(shopifyVariant.inventory_item_id)
-      const currentLevel = currentLevels.find(level => level.location_id === shopifyLocation.id)
-      
-      const inventoryBefore = currentLevel ? currentLevel.available : 0
+      let inventoryBefore = 0
+      try {
+        const currentLevels = await getInventoryLevels(shopifyVariant.inventory_item_id)
+        const currentLevel = currentLevels.find(level => level.location_id === shopifyLocation.id)
+        inventoryBefore = currentLevel ? currentLevel.available : 0
+      } catch (error) {
+        console.warn(`⚠️ [${progress}] Could not get current inventory levels, assuming 0:`, error)
+      }
 
       // Update the inventory level
       await updateInventoryLevel(
@@ -322,6 +539,8 @@ export async function syncStoreStockToShopify(
         shopifyLocation.id,
         inventoryItem.available_quantity
       )
+
+      console.log(`✅ [${progress}] Updated inventory: ${inventoryBefore} → ${inventoryItem.available_quantity}`)
 
       results.push({
         barcode: product.barcode,
@@ -344,21 +563,50 @@ export async function syncStoreStockToShopify(
       })
       successfulUpdates++
 
-      // Add a small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Progress update every 10 items
+      if ((i + 1) % 10 === 0) {
+        const elapsed = (Date.now() - startTime) / 1000
+        const avgTimePerItem = elapsed / (i + 1)
+        const estimatedTotal = avgTimePerItem * validInventory.length
+        console.log(`📊 Progress: ${i + 1}/${validInventory.length} (${Math.round((i + 1) / validInventory.length * 100)}%) - ETA: ${Math.round(estimatedTotal - elapsed)}s`)
+      }
 
     } catch (error) {
-      console.error(`Error updating Shopify inventory for ${product.barcode}:`, error)
+      console.error(`❌ [${progress}] Error updating Shopify inventory for ${product.barcode}:`, error)
+      
+      // Determine error type for better reporting
+      let errorMessage = 'Unknown error'
+      if (error instanceof Error) {
+        if (error.message.includes('429')) {
+          errorMessage = 'Rate limit exceeded - try again later'
+        } else if (error.message.includes('404')) {
+          errorMessage = 'Inventory item not found in Shopify'
+        } else if (error.message.includes('422')) {
+          errorMessage = 'Invalid inventory data'
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
       results.push({
         barcode: product.barcode,
         status: 'error',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: errorMessage,
         shopify_variant_id: undefined,
         shopify_inventory_item_id: undefined
       })
       failedUpdates++
     }
   }
+
+  const processingTime = Date.now() - startTime
+  const successRate = validInventory.length > 0 ? Math.round((successfulUpdates / validInventory.length) * 100) : 0
+
+  console.log(`🏁 Sync completed in ${(processingTime / 1000).toFixed(1)}s:`)
+  console.log(`   ✅ Successful: ${successfulUpdates}`)
+  console.log(`   ❌ Failed: ${failedUpdates}`)
+  console.log(`   ⚠️ Skipped: ${skippedProducts}`)
+  console.log(`   📊 Success Rate: ${successRate}%`)
 
   return {
     store_id: storeId,
@@ -369,7 +617,7 @@ export async function syncStoreStockToShopify(
     successful_updates: successfulUpdates,
     failed_updates: failedUpdates,
     skipped_products: skippedProducts,
-    processing_time_ms: Date.now() - startTime,
+    processing_time_ms: processingTime,
     results
   }
 }
@@ -401,6 +649,51 @@ export async function validateShopifyCredentials(): Promise<{ valid: boolean; sh
   } catch (error) {
     return {
       valid: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+}
+
+// Test function to validate the sync improvements
+export async function testShopifySyncOptimizations(testBarcode: string): Promise<{
+  success: boolean
+  searchTime: number
+  variantFound: boolean
+  searchStrategy?: string
+  error?: string
+}> {
+  const startTime = Date.now()
+  
+  try {
+    console.log(`🧪 Testing sync optimizations with barcode: ${testBarcode}`)
+    
+    // Test the optimized search
+    const variant = await findShopifyVariantByBarcode(testBarcode)
+    const searchTime = Date.now() - startTime
+    
+    if (variant) {
+      console.log(`✅ Test successful! Found variant in ${searchTime}ms`)
+      return {
+        success: true,
+        searchTime,
+        variantFound: true,
+        searchStrategy: 'optimized_search'
+      }
+    } else {
+      console.log(`ℹ️ Test completed - no variant found for barcode (${searchTime}ms)`)
+      return {
+        success: true,
+        searchTime,
+        variantFound: false
+      }
+    }
+  } catch (error) {
+    const searchTime = Date.now() - startTime
+    console.error(`❌ Test failed after ${searchTime}ms:`, error)
+    return {
+      success: false,
+      searchTime,
+      variantFound: false,
       error: error instanceof Error ? error.message : 'Unknown error'
     }
   }
