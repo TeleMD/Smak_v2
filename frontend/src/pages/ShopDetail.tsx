@@ -66,52 +66,24 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
   const handleSyncToShopify = async () => {
     if (!store) return
     
-    setIsSyncing(true)
-    setSyncResult(null)
+    // Temporary: Show a coming soon message instead of trying to sync
+    alert(`Shopify sync for "${store.name}" is currently being configured. This feature will be available soon!`)
     
-    try {
-      // First test the Shopify connection
-      console.log('Testing Shopify connection...')
-      const testResponse = await fetch('/api/shopify-proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          endpoint: '/shop.json',
-          method: 'GET'
-        }),
-      })
-      
-      if (!testResponse.ok) {
-        const errorData = await testResponse.json()
-        console.error('Shopify connection test failed:', errorData)
-        throw new Error(`Connection test failed: ${errorData.error}`)
-      }
-      
-      console.log('Shopify connection successful, proceeding with sync...')
-      const result = await syncStoreToShopify(store.id)
-      setSyncResult(result)
-      setShowSyncResult(true)
-      
-      // Show success notification
-      console.log('Sync completed:', result)
-    } catch (error) {
-      console.error('Sync failed:', error)
-      // Show detailed error information
-      let errorMessage = 'Unknown error'
-      if (error instanceof Error) {
-        errorMessage = error.message
-        console.error('Full error details:', {
-          message: error.message,
-          stack: error.stack,
-          error: error
-        })
-      }
-      alert(`Sync failed: ${errorMessage}`)
-    } finally {
-      setIsSyncing(false)
-    }
+    // TODO: Re-enable once Shopify credentials are properly configured
+    // setIsSyncing(true)
+    // setSyncResult(null)
+    // 
+    // try {
+    //   const result = await syncStoreToShopify(store.id)
+    //   setSyncResult(result)
+    //   setShowSyncResult(true)
+    //   console.log('Sync completed:', result)
+    // } catch (error) {
+    //   console.error('Sync failed:', error)
+    //   alert(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    // } finally {
+    //   setIsSyncing(false)
+    // }
   }
 
   if (loading) {

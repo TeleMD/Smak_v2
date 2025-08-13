@@ -73,24 +73,26 @@ export default function ShopManagement({ onSelectShop }: ShopManagementProps) {
   const handleSyncToShopify = async (store: StoreType, event: React.MouseEvent) => {
     event.stopPropagation() // Prevent shop selection when clicking sync button
     
-    setSyncingStores(prev => new Set(prev).add(store.id))
+    // Temporary: Show coming soon message
+    alert(`Shopify sync for "${store.name}" is currently being configured. This feature will be available soon!`)
     
-    try {
-      const result = await syncStoreToShopify(store.id)
-      console.log('Sync completed for', store.name, ':', result)
-      
-      // Show a simple success message
-      alert(`Sync completed for ${store.name}: ${result.successful_updates} products updated, ${result.failed_updates} failed, ${result.skipped_products} skipped`)
-    } catch (error) {
-      console.error('Sync failed for', store.name, ':', error)
-      alert(`Sync failed for ${store.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-      setSyncingStores(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(store.id)
-        return newSet
-      })
-    }
+    // TODO: Re-enable once Shopify integration is working
+    // setSyncingStores(prev => new Set(prev).add(store.id))
+    // 
+    // try {
+    //   const result = await syncStoreToShopify(store.id)
+    //   console.log('Sync completed for', store.name, ':', result)
+    //   alert(`Sync completed for ${store.name}: ${result.successful_updates} products updated, ${result.failed_updates} failed, ${result.skipped_products} skipped`)
+    // } catch (error) {
+    //   console.error('Sync failed for', store.name, ':', error)
+    //   alert(`Sync failed for ${store.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    // } finally {
+    //   setSyncingStores(prev => {
+    //     const newSet = new Set(prev)
+    //     newSet.delete(store.id)
+    //     return newSet
+    //   })
+    // }
   }
 
   if (loading) {
