@@ -83,16 +83,45 @@ export async function getShopifyProducts(limit = 250): Promise<ShopifyProduct[]>
 
 export async function findShopifyVariantByBarcode(barcode: string): Promise<ShopifyVariant | null> {
   try {
-    // Search for products with the specific barcode
-    const response = await shopifyApiRequest(`/products.json?fields=id,variants&limit=250`)
+    console.log(`🔍 Searching for barcode: ${barcode}`)
+    
+    // Search for products - increased limit and added barcode field
+    const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=250`)
     const products: ShopifyProduct[] = response.products || []
     
+    console.log(`📦 Found ${products.length} products in Shopify`)
+    
+    // Log first few products for debugging
+    console.log('Sample products:', products.slice(0, 3).map(p => ({
+      title: p.title,
+      variants: p.variants?.map(v => ({ id: v.id, barcode: v.barcode }))
+    })))
+    
     for (const product of products) {
-      const variant = product.variants?.find(v => v.barcode === barcode)
-      if (variant) {
-        return variant
+      if (product.variants) {
+        for (const variant of product.variants) {
+          // Try exact match and trimmed match
+          if (variant.barcode === barcode || variant.barcode?.trim() === barcode.trim()) {
+            console.log(`✅ Found variant for barcode ${barcode}:`, {
+              product_title: product.title,
+              variant_id: variant.id,
+              inventory_item_id: variant.inventory_item_id,
+              stored_barcode: variant.barcode
+            })
+            return variant
+          }
+        }
       }
     }
+    
+    console.log(`❌ No variant found for barcode: ${barcode}`)
+    
+    // Log all barcodes for debugging if not found
+    const allBarcodes = products.flatMap(p => 
+      p.variants?.map(v => v.barcode).filter(Boolean) || []
+    )
+    console.log(`📊 Available barcodes (first 10):`, allBarcodes.slice(0, 10))
+    
     return null
   } catch (error) {
     console.error('Error finding Shopify variant by barcode:', error)
@@ -161,10 +190,13 @@ export async function syncStoreStockToShopify(
     }
   }
 
+  console.log(`🚀 Starting sync for ${inventory.length} products to location: ${shopifyLocation.name}`)
+  
   // Process each inventory item
   for (const inventoryItem of inventory) {
     const product = inventoryItem.product
     if (!product || !product.barcode) {
+      console.log(`⚠️ Skipping product: missing barcode`, { product: product?.name || 'Unknown' })
       results.push({
         barcode: product?.sku || 'unknown',
         status: 'skipped',
@@ -174,11 +206,14 @@ export async function syncStoreStockToShopify(
       continue
     }
 
+    console.log(`🔄 Processing: ${product.name} (${product.barcode}) - Quantity: ${inventoryItem.available_quantity}`)
+
     try {
       // Find the corresponding Shopify variant by barcode
       const shopifyVariant = await findShopifyVariantByBarcode(product.barcode)
       
       if (!shopifyVariant) {
+        console.log(`❌ Product not found in Shopify: ${product.barcode}`)
         results.push({
           barcode: product.barcode,
           status: 'skipped',
