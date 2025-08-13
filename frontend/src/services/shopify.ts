@@ -108,13 +108,45 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
       for (const product of products) {
         if (product.variants) {
           for (const variant of product.variants) {
-            // Try exact match and trimmed match
-            if (variant.barcode === barcode || variant.barcode?.trim() === barcode.trim()) {
-              console.log(`✅ Found variant for barcode ${barcode} on page ${page}:`, {
+            // Try multiple matching strategies
+            const shopifyBarcode = variant.barcode
+            if (!shopifyBarcode) continue
+            
+            // Strategy 1: Exact match
+            if (shopifyBarcode === barcode || shopifyBarcode.trim() === barcode.trim()) {
+              console.log(`✅ Found variant for barcode ${barcode} on page ${page} (exact match):`, {
                 product_title: product.title,
                 variant_id: variant.id,
                 inventory_item_id: variant.inventory_item_id,
-                stored_barcode: variant.barcode
+                stored_barcode: shopifyBarcode
+              })
+              return variant
+            }
+            
+            // Strategy 2: Remove leading zeros and compare
+            const normalizedShopify = shopifyBarcode.replace(/^0+/, '')
+            const normalizedSearch = barcode.replace(/^0+/, '')
+            if (normalizedShopify === normalizedSearch && normalizedShopify.length > 0) {
+              console.log(`✅ Found variant for barcode ${barcode} on page ${page} (normalized match):`, {
+                product_title: product.title,
+                variant_id: variant.id,
+                inventory_item_id: variant.inventory_item_id,
+                stored_barcode: shopifyBarcode,
+                normalized_match: `${normalizedSearch} = ${normalizedShopify}`
+              })
+              return variant
+            }
+            
+            // Strategy 3: Case insensitive alphanumeric only
+            const alphaNumShopify = shopifyBarcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+            const alphaNumSearch = barcode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+            if (alphaNumShopify === alphaNumSearch && alphaNumShopify.length > 0) {
+              console.log(`✅ Found variant for barcode ${barcode} on page ${page} (alphanumeric match):`, {
+                product_title: product.title,
+                variant_id: variant.id,
+                inventory_item_id: variant.inventory_item_id,
+                stored_barcode: shopifyBarcode,
+                alphanumeric_match: `${alphaNumSearch} = ${alphaNumShopify}`
               })
               return variant
             }
@@ -134,6 +166,22 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
     
     console.log(`📦 Searched through ${allProducts.length} total products across ${page} pages`)
     console.log(`❌ No variant found for barcode: ${barcode}`)
+    
+    // Log sample of available barcodes for debugging
+    const allBarcodes = allProducts.flatMap(p => 
+      p.variants?.map(v => v.barcode).filter(Boolean) || []
+    )
+    console.log(`📊 Total barcodes in Shopify: ${allBarcodes.length}`)
+    console.log(`🔍 Sample Shopify barcodes:`, allBarcodes.slice(0, 20))
+    console.log(`🎯 Looking for barcode: "${barcode}" (length: ${barcode.length})`)
+    
+    // Check for similar barcodes (partial matches)
+    const similarBarcodes = allBarcodes.filter(bc => 
+      bc && (bc.includes(barcode) || barcode.includes(bc))
+    )
+    if (similarBarcodes.length > 0) {
+      console.log(`🔗 Found similar barcodes:`, similarBarcodes.slice(0, 10))
+    }
     
     return null
   } catch (error) {
