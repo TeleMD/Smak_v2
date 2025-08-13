@@ -207,9 +207,9 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                         const data = await response.json()
                         const shopifyProducts = data.products || []
                         console.log('🛍️ Sample Shopify products with barcodes:', 
-                          shopifyProducts.map(p => ({
+                          shopifyProducts.map((p: any) => ({
                             title: p.title,
-                            variants: p.variants?.map(v => ({
+                            variants: p.variants?.map((v: any) => ({
                               barcode: v.barcode,
                               sku: v.sku
                             }))
