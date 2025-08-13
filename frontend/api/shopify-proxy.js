@@ -30,18 +30,32 @@ export default async function handler(req, res) {
         debug: {
           hasAccessToken: !!accessToken,
           hasStoreUrl: !!storeUrl,
+          storeUrlValue: storeUrl ? storeUrl.substring(0, 30) + '...' : null,
           envKeys: Object.keys(process.env).filter(key => key.includes('SHOPIFY'))
         }
       })
     }
 
-    // Extract store domain
-    const match = storeUrl.match(/\/store\/([^\/]+)/)
-    if (!match) {
-      return res.status(500).json({ error: 'Invalid Shopify store URL format' })
-    }
+    // Extract store domain - handle multiple URL formats
+    let storeDomain
     
-    const storeDomain = `${match[1]}.myshopify.com`
+    // Try different URL patterns
+    const storeMatch = storeUrl.match(/\/store\/([^\/]+)/)
+    const adminMatch = storeUrl.match(/^https:\/\/admin\.shopify\.com\/store\/([^\/]+)/)
+    const directMatch = storeUrl.match(/^https:\/\/([^\/]+)\.myshopify\.com/)
+    
+    if (storeMatch) {
+      storeDomain = `${storeMatch[1]}.myshopify.com`
+    } else if (adminMatch) {
+      storeDomain = `${adminMatch[1]}.myshopify.com`
+    } else if (directMatch) {
+      storeDomain = `${directMatch[1]}.myshopify.com`
+    } else {
+      return res.status(500).json({ 
+        error: 'Invalid Shopify store URL format. Expected formats: https://admin.shopify.com/store/yourstore or https://yourstore.myshopify.com',
+        receivedUrl: storeUrl 
+      })
+    }
     const apiUrl = `https://${storeDomain}/admin/api/2024-01${endpoint}`
 
     // Make request to Shopify
