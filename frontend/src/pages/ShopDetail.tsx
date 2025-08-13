@@ -179,6 +179,52 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                   {isSyncing ? 'Syncing...' : 'Sync to Shopify'}
                 </button>
                 <button
+                  onClick={async () => {
+                    console.log('🔍 DIAGNOSTIC: Starting barcode comparison...')
+                    
+                    // Get sample of your inventory barcodes
+                    const sampleInventory = inventory.slice(0, 10)
+                    console.log('📦 Sample inventory barcodes from Smak v2:', 
+                      sampleInventory.map(i => ({
+                        name: i.product?.name,
+                        barcode: i.product?.barcode,
+                        quantity: i.available_quantity
+                      }))
+                    )
+                    
+                    // Get sample of Shopify barcodes
+                    try {
+                      const response = await fetch('/api/shopify-proxy', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          endpoint: '/products.json?fields=id,title,variants&limit=10',
+                          method: 'GET'
+                        }),
+                      })
+                      
+                      if (response.ok) {
+                        const data = await response.json()
+                        const shopifyProducts = data.products || []
+                        console.log('🛍️ Sample Shopify products with barcodes:', 
+                          shopifyProducts.map(p => ({
+                            title: p.title,
+                            variants: p.variants?.map(v => ({
+                              barcode: v.barcode,
+                              sku: v.sku
+                            }))
+                          }))
+                        )
+                      }
+                    } catch (error) {
+                      console.error('Error fetching Shopify sample:', error)
+                    }
+                  }}
+                  className="ml-2 inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  🔍 Debug
+                </button>
+                <button
                   onClick={loadShopData}
                   className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                 >
