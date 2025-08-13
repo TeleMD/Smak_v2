@@ -20,9 +20,8 @@ export default async function handler(req, res) {
     }
 
     // Get credentials from environment variables
-    // Try both VITE_ prefixed and non-prefixed versions
-    const accessToken = process.env.VITE_SHOPIFY_ACCESS_TOKEN || process.env.SHOPIFY_ACCESS_TOKEN
-    const storeUrl = process.env.VITE_SHOPIFY_STORE_URL || process.env.SHOPIFY_STORE_URL
+    const accessToken = process.env.VITE_SHOPIFY_ACCESS_TOKEN
+    const storeUrl = process.env.VITE_SHOPIFY_STORE_URL
     
     if (!accessToken || !storeUrl) {
       return res.status(500).json({ 
@@ -30,8 +29,7 @@ export default async function handler(req, res) {
         debug: {
           hasAccessToken: !!accessToken,
           hasStoreUrl: !!storeUrl,
-          storeUrlValue: storeUrl ? storeUrl.substring(0, 30) + '...' : null,
-          envKeys: Object.keys(process.env).filter(key => key.includes('SHOPIFY'))
+          storeUrlValue: storeUrl ? storeUrl.substring(0, 50) + '...' : null
         }
       })
     }
@@ -40,23 +38,35 @@ export default async function handler(req, res) {
     let storeDomain
     
     // Try different URL patterns
-    const storeMatch = storeUrl.match(/\/store\/([^\/]+)/)
-    const adminMatch = storeUrl.match(/^https:\/\/admin\.shopify\.com\/store\/([^\/]+)/)
+    const adminMatch = storeUrl.match(/^https:\/\/admin\.shopify\.com\/store\/([^\/\?]+)/)
     const directMatch = storeUrl.match(/^https:\/\/([^\/]+)\.myshopify\.com/)
+    const simpleMatch = storeUrl.match(/([^\/\?]+)\.myshopify\.com/)
     
-    if (storeMatch) {
-      storeDomain = `${storeMatch[1]}.myshopify.com`
-    } else if (adminMatch) {
+    if (adminMatch) {
       storeDomain = `${adminMatch[1]}.myshopify.com`
     } else if (directMatch) {
       storeDomain = `${directMatch[1]}.myshopify.com`
+    } else if (simpleMatch) {
+      storeDomain = `${simpleMatch[1]}.myshopify.com`
     } else {
       return res.status(500).json({ 
         error: 'Invalid Shopify store URL format. Expected formats: https://admin.shopify.com/store/yourstore or https://yourstore.myshopify.com',
-        receivedUrl: storeUrl 
+        receivedUrl: storeUrl,
+        patterns: {
+          adminMatch: !!adminMatch,
+          directMatch: !!directMatch,
+          simpleMatch: !!simpleMatch
+        }
       })
     }
+    
     const apiUrl = `https://${storeDomain}/admin/api/2024-01${endpoint}`
+    
+    console.log('Making Shopify API request:', {
+      url: apiUrl,
+      method,
+      hasAccessToken: !!accessToken
+    })
 
     // Make request to Shopify
     const response = await fetch(apiUrl, {
@@ -71,6 +81,11 @@ export default async function handler(req, res) {
     const data = await response.json()
 
     if (!response.ok) {
+      console.error('Shopify API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        data
+      })
       return res.status(response.status).json({
         error: `Shopify API error: ${response.status} ${response.statusText}`,
         details: data
@@ -83,7 +98,7 @@ export default async function handler(req, res) {
     res.status(500).json({ 
       error: 'Internal server error', 
       details: error.message,
-      stack: error.stack?.split('\n').slice(0, 3) // Limited stack trace for debugging
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     })
   }
 }

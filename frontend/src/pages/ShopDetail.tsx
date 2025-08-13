@@ -66,24 +66,21 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
   const handleSyncToShopify = async () => {
     if (!store) return
     
-    // Temporary: Show a coming soon message instead of trying to sync
-    alert(`Shopify sync for "${store.name}" is currently being configured. This feature will be available soon!`)
+    setIsSyncing(true)
+    setSyncResult(null)
     
-    // TODO: Re-enable once Shopify credentials are properly configured
-    // setIsSyncing(true)
-    // setSyncResult(null)
-    // 
-    // try {
-    //   const result = await syncStoreToShopify(store.id)
-    //   setSyncResult(result)
-    //   setShowSyncResult(true)
-    //   console.log('Sync completed:', result)
-    // } catch (error) {
-    //   console.error('Sync failed:', error)
-    //   alert(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    // } finally {
-    //   setIsSyncing(false)
-    // }
+    try {
+      console.log('Starting Shopify sync for store:', store.name)
+      const result = await syncStoreToShopify(store.id)
+      setSyncResult(result)
+      setShowSyncResult(true)
+      console.log('Sync completed:', result)
+    } catch (error) {
+      console.error('Sync failed:', error)
+      alert(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsSyncing(false)
+    }
   }
 
   if (loading) {
