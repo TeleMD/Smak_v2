@@ -81,16 +81,65 @@ export async function getShopifyProducts(limit = 250): Promise<ShopifyProduct[]>
   return response.products || []
 }
 
+// Cache for Shopify products to avoid repeated API calls
+let shopifyProductsCache: ShopifyProduct[] | null = null
+let cacheTimestamp: number = 0
+const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+
+export async function getAllShopifyProducts(): Promise<ShopifyProduct[]> {
+  const now = Date.now()
+  
+  // Return cached data if still valid
+  if (shopifyProductsCache && (now - cacheTimestamp) < CACHE_DURATION) {
+    console.log(`📦 Using cached Shopify products: ${shopifyProductsCache.length} products`)
+    return shopifyProductsCache
+  }
+  
+  console.log(`🔄 Fetching all Shopify products...`)
+  let allProducts: ShopifyProduct[] = []
+  let page = 1
+  const limit = 250
+  
+  try {
+    while (true) {
+      console.log(`📄 Fetching page ${page}...`)
+      
+      const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=${limit}&page=${page}`)
+      const products: ShopifyProduct[] = response.products || []
+      
+      if (products.length === 0) break
+      
+      allProducts = allProducts.concat(products)
+      
+      if (products.length < limit) break
+      
+      page++
+      // Rate limiting: wait between requests
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+    
+    console.log(`✅ Loaded ${allProducts.length} total products from ${page} pages`)
+    
+    // Update cache
+    shopifyProductsCache = allProducts
+    cacheTimestamp = now
+    
+    return allProducts
+  } catch (error) {
+    console.error('❌ Error fetching all products:', error)
+    // Return partial results if we have some
+    return allProducts
+  }
+}
+
 export async function findShopifyVariantByBarcode(barcode: string): Promise<ShopifyVariant | null> {
   try {
     console.log(`🔍 Searching for barcode: ${barcode}`)
     
-    // Use a more targeted search with reasonable limits to avoid rate limiting
-    const limit = 250
-    const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=${limit}`)
-    const products: ShopifyProduct[] = response.products || []
+    // Get all products (from cache or API)
+    const products = await getAllShopifyProducts()
     
-    console.log(`📦 Searching through ${products.length} products (first ${limit})`)
+    console.log(`📦 Searching through ${products.length} products`)
     
     // Check products for matching barcodes
     for (const product of products) {
@@ -142,7 +191,7 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
       }
     }
     
-    console.log(`❌ No variant found for barcode: ${barcode} in first ${limit} products`)
+    console.log(`❌ No variant found for barcode: ${barcode} in ${products.length} products`)
     return null
   } catch (error) {
     console.error('Error finding Shopify variant by barcode:', error)

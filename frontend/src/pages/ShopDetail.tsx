@@ -180,20 +180,22 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                 </button>
                 <button
                   onClick={async () => {
-                    console.log('🔍 DIAGNOSTIC: Starting barcode comparison...')
-                    
-                    // Get sample of your inventory barcodes
-                    const sampleInventory = inventory.slice(0, 10)
-                    console.log('📦 Sample inventory barcodes from Smak v2:', 
-                      sampleInventory.map(i => ({
-                        name: i.product?.name,
-                        barcode: i.product?.barcode,
-                        quantity: i.available_quantity
-                      }))
-                    )
-                    
-                    // Get sample of Shopify barcodes
                     try {
+                      console.log('🔍 DIAGNOSTIC: Starting barcode comparison...')
+                      
+                      // Get sample of your inventory barcodes
+                      const sampleInventory = inventory.slice(0, 10)
+                      console.log('📦 Sample inventory barcodes from Smak v2:', 
+                        sampleInventory.map(i => ({
+                          name: i.product?.name,
+                          barcode: i.product?.barcode,
+                          quantity: i.available_quantity
+                        }))
+                      )
+                      
+                      console.log('🛍️ Fetching Shopify sample...')
+                      
+                      // Get sample of Shopify barcodes
                       const response = await fetch('/api/shopify-proxy', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -215,9 +217,22 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                             }))
                           }))
                         )
+                        
+                        // Also log total counts for comparison
+                        const allBarcodes = shopifyProducts.flatMap((p: any) => 
+                          p.variants?.map((v: any) => v.barcode).filter(Boolean) || []
+                        )
+                        console.log(`📊 Total barcodes in sample: ${allBarcodes.length}`)
+                        console.log(`📊 All sample barcodes:`, allBarcodes)
+                        
+                        alert(`Debug complete! Check console for details. Found ${shopifyProducts.length} Shopify products in sample.`)
+                      } else {
+                        console.error('❌ Shopify API error:', response.status, response.statusText)
+                        alert(`Shopify API error: ${response.status}`)
                       }
                     } catch (error) {
-                      console.error('Error fetching Shopify sample:', error)
+                      console.error('❌ Debug error:', error)
+                      alert(`Debug failed: ${error}`)
                     }
                   }}
                   className="ml-2 inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
