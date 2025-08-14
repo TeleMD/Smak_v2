@@ -288,13 +288,14 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
   try {
     console.log(`🔍 Optimized search for barcode: ${barcode}`)
     
-    // Use cursor-based pagination for more efficient searching
+    // Use cursor-based pagination to search through ALL products
     let sinceId = 0
     let searchedProducts = 0
-    const maxProducts = 1000 // Search through up to 1000 products
     const limit = 250
+    let consecutiveEmptyBatches = 0
+    const maxEmptyBatches = 3 // Stop after 3 consecutive empty batches
     
-    while (searchedProducts < maxProducts) {
+    while (consecutiveEmptyBatches < maxEmptyBatches) {
       console.log(`📄 Searching products since ID ${sinceId}... (searched: ${searchedProducts})`)
       
       try {
@@ -306,9 +307,17 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
         const products: ShopifyProduct[] = response.products || []
         
         if (products.length === 0) {
-          console.log(`📋 No more products found, searched ${searchedProducts} total`)
-          break
+          consecutiveEmptyBatches++
+          console.log(`📋 Empty batch ${consecutiveEmptyBatches}/${maxEmptyBatches}, searched ${searchedProducts} total`)
+          if (consecutiveEmptyBatches >= maxEmptyBatches) {
+            console.log(`📋 Stopping search after ${consecutiveEmptyBatches} consecutive empty batches`)
+            break
+          }
+          continue
         }
+        
+        // Reset empty batch counter when we get products
+        consecutiveEmptyBatches = 0
         
         console.log(`📦 Checking ${products.length} products for barcode matches...`)
         
@@ -336,11 +345,9 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
         searchedProducts += products.length
         sinceId = products[products.length - 1].id
         
-        // If we got fewer products than the limit, we've reached the end
-        if (products.length < limit) {
-          console.log(`📋 Reached end of products, searched ${searchedProducts} total`)
-          break
-        }
+        // Continue searching even if we got fewer products than the limit
+        // Shopify might have gaps in product IDs
+        console.log(`📊 Progress: searched ${searchedProducts} products so far...`)
         
       } catch (error) {
         console.warn(`⚠️ Error searching products since ID ${sinceId}:`, error)
@@ -348,7 +355,47 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
       }
     }
     
-    console.log(`❌ No variant found for barcode: ${barcode} after searching ${searchedProducts} products`)
+    console.log(`❌ No variant found for barcode: ${barcode} after searching ${searchedProducts} products with cursor-based pagination`)
+    
+    // Try a different approach: search by different starting points
+    console.log(`🔄 Trying alternative search strategy for barcode: ${barcode}`)
+    
+    const alternativeStartIds = [1000000, 2000000, 3000000, 4000000, 5000000] // Try different ID ranges
+    
+    for (const startId of alternativeStartIds) {
+      try {
+        console.log(`📄 Trying search from product ID ${startId}...`)
+        const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=250&since_id=${startId}`)
+        const products: ShopifyProduct[] = response.products || []
+        
+        if (products.length === 0) continue
+        
+        console.log(`📦 Found ${products.length} products starting from ID ${startId}, checking for barcode...`)
+        
+        for (const product of products) {
+          if (product.variants) {
+            for (const variant of product.variants) {
+              const matchResult = matchesBarcode(variant.barcode, barcode)
+              
+              if (matchResult.matches) {
+                console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match, alternative search):`, {
+                  product_title: product.title,
+                  variant_id: variant.id,
+                  inventory_item_id: variant.inventory_item_id,
+                  stored_barcode: variant.barcode,
+                  match_strategy: matchResult.strategy
+                })
+                return variant
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Alternative search failed for start ID ${startId}:`, error)
+      }
+    }
+    
+    console.log(`❌ No variant found for barcode: ${barcode} after comprehensive search`)
     return null
   } catch (error) {
     console.error('Error finding Shopify variant by barcode:', error)
