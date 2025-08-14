@@ -239,42 +239,10 @@ export async function searchProductsByBarcode(barcode: string): Promise<ShopifyP
   try {
     console.log(`🔍 Direct search for barcode: ${barcode}`)
     
-    // Try multiple search strategies with Shopify's product search
-    const searchQueries = [
-      barcode, // Exact barcode
-      barcode.replace(/^0+/, ''), // Remove leading zeros
-      barcode.replace(/[^a-zA-Z0-9]/g, '') // Alphanumeric only
-    ].filter((query, index, arr) => arr.indexOf(query) === index) // Remove duplicates
-    
-    const allResults: ShopifyProduct[] = []
-    
-    for (const query of searchQueries) {
-      if (!query) continue
-      
-      try {
-        // Search using Shopify's built-in product search by vendor field
-        const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=50&vendor=${encodeURIComponent(query)}`)
-        const products: ShopifyProduct[] = response.products || []
-        
-        // Also try searching by product title containing the barcode
-        const titleResponse = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=50&title=${encodeURIComponent(query)}`)
-        const titleProducts: ShopifyProduct[] = titleResponse.products || []
-        
-        allResults.push(...products, ...titleProducts)
-        
-        console.log(`📦 Found ${products.length + titleProducts.length} products for query: ${query}`)
-      } catch (error) {
-        console.warn(`⚠️ Search failed for query "${query}":`, error)
-      }
-    }
-    
-    // Remove duplicates based on product ID
-    const uniqueProducts = allResults.filter((product, index, arr) => 
-      arr.findIndex(p => p.id === product.id) === index
-    )
-    
-    console.log(`📊 Total unique products found: ${uniqueProducts.length}`)
-    return uniqueProducts
+    // Shopify doesn't have direct barcode search in REST API, so we skip targeted search
+    // and go straight to the efficient paginated approach
+    console.log(`ℹ️ Skipping targeted search (Shopify REST API limitation), using paginated search`)
+    return []
   } catch (error) {
     console.error('Error searching products by barcode:', error)
     return []
@@ -318,54 +286,40 @@ function matchesBarcode(shopifyBarcode: string | undefined, searchBarcode: strin
 
 export async function findShopifyVariantByBarcode(barcode: string): Promise<ShopifyVariant | null> {
   try {
-    console.log(`🔍 Smart search for barcode: ${barcode}`)
+    console.log(`🔍 Optimized search for barcode: ${barcode}`)
     
-    // First, try direct product search (much more efficient)
-    const searchResults = await searchProductsByBarcode(barcode)
+    // Use cursor-based pagination for more efficient searching
+    let sinceId = 0
+    let searchedProducts = 0
+    const maxProducts = 1000 // Search through up to 1000 products
+    const limit = 250
     
-    // Search through the targeted results
-    for (const product of searchResults) {
-      if (product.variants) {
-        for (const variant of product.variants) {
-          const matchResult = matchesBarcode(variant.barcode, barcode)
-          
-          if (matchResult.matches) {
-            console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match):`, {
-              product_title: product.title,
-              variant_id: variant.id,
-              inventory_item_id: variant.inventory_item_id,
-              stored_barcode: variant.barcode,
-              match_strategy: matchResult.strategy
-            })
-            return variant
-          }
-        }
-      }
-    }
-    
-    // If direct search didn't work, try a broader search with pagination (limited)
-    console.log(`🔄 Barcode not found in targeted search, trying broader search...`)
-    
-    let page = 1
-    const maxPages = 3 // Limit to first 750 products (250 * 3) to avoid timeouts
-    
-    while (page <= maxPages) {
-      console.log(`📄 Searching page ${page}/${maxPages}...`)
+    while (searchedProducts < maxProducts) {
+      console.log(`📄 Searching products since ID ${sinceId}... (searched: ${searchedProducts})`)
       
       try {
-        const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=250&page=${page}`)
+        const endpoint = sinceId > 0 
+          ? `/products.json?fields=id,title,variants&limit=${limit}&since_id=${sinceId}`
+          : `/products.json?fields=id,title,variants&limit=${limit}`
+          
+        const response = await shopifyApiRequest(endpoint)
         const products: ShopifyProduct[] = response.products || []
         
-        if (products.length === 0) break
+        if (products.length === 0) {
+          console.log(`📋 No more products found, searched ${searchedProducts} total`)
+          break
+        }
         
-        // Search through this page
+        console.log(`📦 Checking ${products.length} products for barcode matches...`)
+        
+        // Search through this batch
         for (const product of products) {
           if (product.variants) {
             for (const variant of product.variants) {
               const matchResult = matchesBarcode(variant.barcode, barcode)
               
               if (matchResult.matches) {
-                console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match, page ${page}):`, {
+                console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match, searched ${searchedProducts + products.indexOf(product) + 1} products):`, {
                   product_title: product.title,
                   variant_id: variant.id,
                   inventory_item_id: variant.inventory_item_id,
@@ -378,16 +332,23 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
           }
         }
         
-        if (products.length < 250) break // Last page
-        page++
+        // Update for next iteration
+        searchedProducts += products.length
+        sinceId = products[products.length - 1].id
+        
+        // If we got fewer products than the limit, we've reached the end
+        if (products.length < limit) {
+          console.log(`📋 Reached end of products, searched ${searchedProducts} total`)
+          break
+        }
         
       } catch (error) {
-        console.warn(`⚠️ Error searching page ${page}:`, error)
+        console.warn(`⚠️ Error searching products since ID ${sinceId}:`, error)
         break
       }
     }
     
-    console.log(`❌ No variant found for barcode: ${barcode} after searching ${(page - 1) * 250} products`)
+    console.log(`❌ No variant found for barcode: ${barcode} after searching ${searchedProducts} products`)
     return null
   } catch (error) {
     console.error('Error finding Shopify variant by barcode:', error)
