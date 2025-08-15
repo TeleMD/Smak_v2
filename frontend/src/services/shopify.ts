@@ -550,10 +550,60 @@ export async function syncStoreStockToShopifyDirect(
   
   console.log(`📍 Target location: ${shopDemoLocation.name} (ID: ${shopDemoLocation.id})`)
   
-  // Known product mappings from CSV (we could expand this or make it dynamic)
+  // EXPANDED: Known product mappings from CSV for fast direct access
   const knownProducts: Record<string, string> = {
     '4770175046139': '10700461048139', // cream-cheese-bars-with-coconut
-    // Add more mappings as needed from your CSV export
+    '4251727400116': '10357637120331', // snack-from-spotted-bigeye-salted-and-dried
+    '4030011300116': '10357639905611', // sweetend-condensed-milk-8-fat
+    '4033443612017': '10357666545995', // sour-cherry-fruit-drink
+    '4251727401113': '10357696397643', // snack-of-selene-on-a-banded-doree
+    '4251727401441': '10357712519499', // snack-composed-of-giant-squid-strips
+    '4033443112272': '10357719400779', // snack-of-large-scales-of-lizardfish
+    '4030957191182': '10357725430091', // buckwheat-flour
+    '4030011300123': '10357733851467', // product-based-on-sour-and-cooked-condensed-milk
+    '4030011300147': '10357735522635', // sweetened-condensed-milk-9-fat
+    '4030011310016': '10357737750859', // atlantic-sardines-in-vegetable-oil
+    '4030011310054': '10357739487563', // sprats-whole-and-in-pieces-fried
+    '4030011310061': '10357741584715', // mackerel-with-skin-and-bones
+    '4030011310184': '10357754659147', // skin-and-bones-in-its-own-juice
+    '4030011310221': '10357755380043', // pacific-herring
+    '4030011310320': '10357756232011', // sardinops-herring-fish-chunks
+    '4030011310382': '10357757575499', // salmon-pieces-with-skin-and-bones
+    '4030011310306': '10357770158411', // sprats-smoked-in-vegetable-oil
+    '4030011310412': '10357778776395', // smoked-sprats-in-vegetable-oil
+    '4750017355292': '10357780775243', // smoked-sprats-pate
+    '4030011310498': '10357782872395', // atlantic-salmon-fillets-in-mustard-sauce
+    '4030011310504': '10357783986507', // fish-liver-in-natural-juice
+    '4030011310566': '10357789360459', // own-juice-and-oil-smoked
+    '4030011310818': '10357794931019', // salmon-meatballs-in-tomato-sauce
+    '4030011310825': '10357795750219', // pacific-humpback-salmon-head-slice
+    '4030011330007': '10357797814603', // braised-pork-in-seafood
+    '4030011330021': '10357802139979', // braised-beef-in-seafood
+    '4030011330038': '10357803123019', // chicken-braised-stew
+    '4030011330045': '10357803909451', // braised-turkey-stew
+    '4030011330205': '10357807481163', // braised-pork-shoulder
+    '4030011330304': '10357811118411', // beef-in-spicy-infusion
+    '4030011330403': '10357815116107', // pork-porridge-with-buckwheat
+    '4030011330458': '10357817147723', // rice-platter-with-pork-pilaf
+    '4030011330502': '10357822193995', // barley-porridge-with-lamb
+    '4030011330557': '10357822980427', // buckwheat-porridge-with-beef
+    '4033443332182': '10357824225611', // moja-semja-braised-pork-with-chicken
+    '4033443332205': '10357842018635', // moja-semja-lamb-and-beef-stewed
+    '4030011350036': '10357846540619', // white-beans-in-tomato-sauce
+    '4030011350067': '10357847294283', // eggplant-salad-with-prunes
+    '4030011350098': '10357851783499', // eggplant-salad-with-vegetables
+    '4030011350111': '10357852242251', // bulgarian-vegetable-salad
+    '4030011350135': '10357852832075', // vegetable-salad-with-rice
+    '4030011350197': '10357853749579', // danube-vegetable-salad
+    '4030011350258': '10357857485131', // melange-de-legumes-ete-salad
+    '4030011350326': '10357858140491', // bulgarian-eggplant-stew
+    '4030011350401': '10357858828619', // bulgarian-salad-with-fried-eggplants
+    '4030011350418': '10357862728011', // salad-of-bulgarian-legumes
+    '4030011350517': '10357874852171', // preparation-de-legumes-ovoshchnoie
+    '4850009749600': '10357879406923', // preparation-of-tomatoes-with-poivrons
+    '4030957351739': '10357886779723', // ker-u-sus-eggplant-preparation
+    '4030957351753': '10357889827147', // preparation-of-aubergines-eggs
+    // Add more as needed - this should cover many of the common products
   }
   
   let processed = 0
@@ -563,63 +613,54 @@ export async function syncStoreStockToShopifyDirect(
   const validInventory = inventory.filter(item => item.product?.barcode)
   console.log(`📋 Processing ${validInventory.length} products with barcodes`)
   
-  for (const item of validInventory) {
+  // OPTIMIZATION: Split into known and unknown products for different processing strategies
+  const knownProductItems = validInventory.filter(item => knownProducts[item.product!.barcode!])
+  const unknownProductItems = validInventory.filter(item => !knownProducts[item.product!.barcode!])
+  
+  console.log(`⚡ OPTIMIZATION: ${knownProductItems.length} known products (fast), ${unknownProductItems.length} unknown (slow search)`)
+  
+  // Phase 1: Process known products FAST (direct API calls)
+  console.log(`\n🚀 Phase 1: Processing ${knownProductItems.length} known products (FAST)...`)
+  for (const item of knownProductItems) {
     const barcode = item.product!.barcode!
     processed++
     
     try {
-      console.log(`\n🔍 Processing ${processed}/${validInventory.length}: ${barcode}`)
+      if (processed % 50 === 0) {
+        console.log(`📊 Progress: ${processed}/${validInventory.length} (${Math.round(processed/validInventory.length*100)}%)`)
+      }
+      
+      const productId = knownProducts[barcode]
+      const response = await shopifyApiRequest(`/products/${productId}.json`)
       
       let variant = null
-      
-      // Strategy 1: Use known product ID if available
-      if (knownProducts[barcode]) {
-        const productId = knownProducts[barcode]
-        console.log(`💡 Using known product ID: ${productId}`)
-        
-        try {
-          const response = await shopifyApiRequest(`/products/${productId}.json`)
-          if (response.product?.variants) {
-            for (const v of response.product.variants) {
-              if (v.barcode === barcode) {
-                variant = v
-                console.log(`✅ Found via known ID`)
-                break
-              }
-            }
+      if (response.product?.variants) {
+        for (const v of response.product.variants) {
+          if (v.barcode === barcode) {
+            variant = v
+            break
           }
-        } catch (error) {
-          console.log(`⚠️ Known ID failed, falling back to search`)
         }
       }
       
-      // Strategy 2: Fallback to limited search (first ~298 products)
       if (!variant) {
-        console.log(`🔍 Searching in accessible products...`)
-        variant = await findShopifyVariantByBarcode(barcode)
-      }
-      
-      if (!variant) {
-        console.log(`❌ Product not found: ${barcode}`)
+        console.log(`⚠️ Known product ${barcode} not found, skipping`)
         results.push({
           barcode,
           status: 'error',
-          message: 'Product not found in accessible products'
+          message: 'Known product ID returned no matching variant'
         })
         failedUpdates++
         continue
       }
       
       found++
-      console.log(`🎯 Found product variant ID: ${variant.id}`)
       
       // Update inventory
       const newQuantity = item.quantity
       await updateInventoryLevel(variant.inventory_item_id, shopDemoLocation.id, newQuantity)
       
-      console.log(`✅ Updated inventory: ${barcode} → ${newQuantity}`)
       successfulUpdates++
-      
       results.push({
         barcode,
         status: 'success',
@@ -629,13 +670,71 @@ export async function syncStoreStockToShopifyDirect(
       })
       
     } catch (error) {
-      console.error(`❌ Error processing ${barcode}:`, error)
+      console.error(`❌ Error processing known product ${barcode}:`, error)
       failedUpdates++
       results.push({
         barcode,
         status: 'error',
         message: error instanceof Error ? error.message : 'Unknown error'
       })
+    }
+  }
+  
+  // Phase 2: Process unknown products with bulk search
+  console.log(`\n🔍 Phase 2: Processing ${unknownProductItems.length} unknown products (bulk search)...`)
+  if (unknownProductItems.length > 0) {
+    // First try bulk search to find as many as possible
+    const unknownBarcodes = unknownProductItems.map(item => item.product!.barcode!)
+    console.log(`🔄 Bulk searching for ${unknownBarcodes.length} unknown products...`)
+    
+    const bulkResults = await findMultipleShopifyVariantsByBarcodes(unknownBarcodes)
+    
+    // Process bulk results
+    for (const item of unknownProductItems) {
+      const barcode = item.product!.barcode!
+      processed++
+      
+      try {
+        if (processed % 50 === 0) {
+          console.log(`📊 Progress: ${processed}/${validInventory.length} (${Math.round(processed/validInventory.length*100)}%)`)
+        }
+        
+        const bulkVariant = bulkResults[barcode]
+        
+        if (bulkVariant) {
+          found++
+          
+          // Update inventory
+          const newQuantity = item.quantity
+          await updateInventoryLevel(bulkVariant.inventory_item_id, shopDemoLocation.id, newQuantity)
+          
+          successfulUpdates++
+          results.push({
+            barcode,
+            status: 'success',
+            message: `Updated inventory to ${newQuantity} (bulk found)`,
+            shopify_variant_id: bulkVariant.id,
+            shopify_inventory_item_id: bulkVariant.inventory_item_id
+          })
+        } else {
+          // Not found in bulk search
+          results.push({
+            barcode,
+            status: 'error',
+            message: 'Product not found in accessible products'
+          })
+          failedUpdates++
+        }
+        
+      } catch (error) {
+        console.error(`❌ Error processing unknown product ${barcode}:`, error)
+        failedUpdates++
+        results.push({
+          barcode,
+          status: 'error',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        })
+      }
     }
   }
   
@@ -1128,6 +1227,30 @@ export async function testSingleProductUpdate(barcode: string = '4770175046139')
       error: error instanceof Error ? error.message : 'Unknown error'
     }
   }
+}
+
+// UTILITY: Generate complete product mapping from CSV data
+export function generateProductMappingFromCSV(csvData: string): Record<string, string> {
+  const mappings: Record<string, string> = {}
+  const lines = csvData.split('\n')
+  
+  for (let i = 1; i < lines.length; i++) { // Skip header
+    const line = lines[i].trim()
+    if (!line) continue
+    
+    const columns = line.split('","').map(col => col.replace(/^"|"$/g, ''))
+    if (columns.length >= 3) {
+      const shopifyId = columns[0] // ID column
+      const barcode = columns[2] // Variant Barcode column
+      
+      if (barcode && barcode !== 'nan' && shopifyId) {
+        mappings[barcode] = shopifyId
+      }
+    }
+  }
+  
+  console.log(`📋 Generated ${Object.keys(mappings).length} product mappings from CSV`)
+  return mappings
 }
 
 // Test function to validate the sync improvements
