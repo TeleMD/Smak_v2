@@ -820,7 +820,7 @@ export async function validateShopifyCredentials(): Promise<{ valid: boolean; sh
   }
 }
 
-// COMPREHENSIVE DIAGNOSTIC: Check ALL possible reasons why product isn't found
+// API PAGINATION DIAGNOSTIC: Test why API stops at 298 products  
 export async function testSingleProductUpdate(barcode: string = '4770175046139'): Promise<{
   success: boolean
   found: boolean
@@ -828,157 +828,160 @@ export async function testSingleProductUpdate(barcode: string = '4770175046139')
   details: any
   error?: string
 }> {
-  console.log(`🎯 COMPREHENSIVE DIAGNOSTIC: Testing barcode ${barcode}`)
+  console.log(`🔬 API PAGINATION DIAGNOSTIC: Testing why API stops at ~298 products`)
+  console.log(`📋 FACTS WE KNOW:`)
+  console.log(`   - Target barcode: ${barcode}`)
+  console.log(`   - Product EXISTS in Shopify (confirmed via CSV export)`)
+  console.log(`   - Product is at position ~766 in Shopify`)
+  console.log(`   - API only returns ~298 products`)
   
   try {
     const diagnosticResults: any = {
-      totalProductsInShopify: 0,
-      searchedAllProducts: false,
-      allBarcodes: [],
-      similarBarcodes: [],
-      productTitles: [],
-      productStatuses: [],
-      archivedProducts: 0
+      totalProductsFound: 0,
+      apiCallsMade: 0,
+      lastProductId: null,
+      stoppedReason: '',
+      highestIdAttempted: 0,
+      csvProductExists: true,
+      csvProductId: '10700461048139',
+      csvProductTitle: 'cream-cheese-bars-with-coconut-in-cocoa-based-glaze-frozen'
     }
     
-    // Step 1: Get ALL products with ALL statuses and fields
-    console.log(`🔍 COMPREHENSIVE SCAN: Getting ALL products with full details...`)
+    console.log(`🔍 TESTING AGGRESSIVE PAGINATION STRATEGIES...`)
     
     let sinceId = 0
     let totalSearched = 0
     const limit = 250
-    let allProducts: ShopifyProduct[] = []
     
-    // First: Get all ACTIVE products
-    console.log(`📋 Scanning ACTIVE products...`)
-    for (let attempt = 1; attempt <= 20; attempt++) {
+    // Strategy 1: Standard pagination to see where it fails
+    console.log(`📄 Strategy 1: Standard pagination from ID 0`)
+    for (let attempt = 1; attempt <= 50; attempt++) {
       const endpoint = sinceId > 0 
-        ? `/products.json?limit=${limit}&since_id=${sinceId}`
-        : `/products.json?limit=${limit}`
+        ? `/products.json?fields=id,title,variants&limit=${limit}&since_id=${sinceId}`
+        : `/products.json?fields=id,title,variants&limit=${limit}`
         
+      console.log(`📞 API Call ${attempt}: ${endpoint}`)
+      diagnosticResults.apiCallsMade++
+      
       const response = await shopifyApiRequest(endpoint)
       const products: ShopifyProduct[] = response.products || []
       
-      console.log(`📦 Active products attempt ${attempt}: Found ${products.length} products`)
+      console.log(`📦 Attempt ${attempt}: Found ${products.length} products`)
       
-      if (products.length === 0) break
+      if (products.length === 0) {
+        diagnosticResults.stoppedReason = `No more products returned after ${totalSearched} total`
+        console.log(`❌ STOPPED: ${diagnosticResults.stoppedReason}`)
+        break
+      }
       
-      allProducts.push(...products)
       totalSearched += products.length
+      diagnosticResults.totalProductsFound = totalSearched
+      
+      // Check if we found our target product
+      for (const product of products) {
+        if (product.variants) {
+          for (const variant of product.variants) {
+            if (variant.barcode === barcode) {
+              console.log(`🎯 FOUND TARGET PRODUCT AT ATTEMPT ${attempt}!`)
+              console.log(`   - Product: ${product.title}`)
+              console.log(`   - Shopify ID: ${product.id}`)
+              console.log(`   - Total products searched: ${totalSearched}`)
+              
+              return {
+                success: true,
+                found: true,
+                updated: false,
+                details: {
+                  ...diagnosticResults,
+                  foundAtAttempt: attempt,
+                  foundProduct: product.title,
+                  foundAtPosition: totalSearched
+                }
+              }
+            }
+          }
+        }
+      }
       
       if (products.length > 0) {
         sinceId = products[products.length - 1].id
+        diagnosticResults.lastProductId = sinceId
+        diagnosticResults.highestIdAttempted = Math.max(diagnosticResults.highestIdAttempted, sinceId)
+        console.log(`📈 Next since_id: ${sinceId}`)
       }
       
-      if (products.length < limit) break
+      // If we got fewer than limit, we've reached the API end
+      if (products.length < limit) {
+        diagnosticResults.stoppedReason = `Reached API end - got ${products.length} < ${limit} products`
+        console.log(`📋 REACHED END: ${diagnosticResults.stoppedReason}`)
+        break
+      }
     }
     
-    diagnosticResults.totalProductsInShopify = totalSearched
-    diagnosticResults.searchedAllProducts = true
+    console.log(`📊 PAGINATION DIAGNOSTIC COMPLETE:`)
+    console.log(`   - Total products found via API: ${diagnosticResults.totalProductsFound}`)
+    console.log(`   - API calls made: ${diagnosticResults.apiCallsMade}`)
+    console.log(`   - Highest product ID reached: ${diagnosticResults.highestIdAttempted}`)
+    console.log(`   - Stopped because: ${diagnosticResults.stoppedReason}`)
+    console.log(`   - Target product CSV ID: ${diagnosticResults.csvProductId}`)
     
-    console.log(`📊 TOTAL ACTIVE PRODUCTS FOUND: ${totalSearched}`)
-    
-    // Step 2: Extract ALL barcodes and look for similar ones
-    console.log(`🔍 ANALYZING ALL BARCODES...`)
-    const allBarcodes: string[] = []
-    const allTitles: string[] = []
-    
-    for (const product of allProducts) {
-      allTitles.push(product.title)
-      if (product.variants) {
-        for (const variant of product.variants) {
-          if (variant.barcode) {
-            allBarcodes.push(variant.barcode)
-            
-            // Check for exact match
+    // Strategy 2: Try to jump directly to the target product ID
+    console.log(`\n🎯 Strategy 2: Try jumping directly to target product ID`)
+    try {
+      const targetId = parseInt(diagnosticResults.csvProductId)
+      console.log(`📞 Attempting direct API call to product ID: ${targetId}`)
+      
+      const directResponse = await shopifyApiRequest(`/products/${targetId}.json`)
+      if (directResponse.product) {
+        console.log(`✅ DIRECT ACCESS SUCCESSFUL!`)
+        console.log(`   - Product found via direct ID call`)
+        console.log(`   - Title: ${directResponse.product.title}`)
+        
+        // Check if it has our barcode
+        if (directResponse.product.variants) {
+          for (const variant of directResponse.product.variants) {
             if (variant.barcode === barcode) {
-              console.log(`🎯 EXACT MATCH FOUND!`)
-              console.log(`   - Product: ${product.title}`)
-              console.log(`   - Status: ${product.status}`)
-              console.log(`   - Barcode: ${variant.barcode}`)
+              console.log(`🎯 BARCODE MATCHED VIA DIRECT ACCESS!`)
               
-              // Try to update this product
+              // Try to update inventory
               const locations = await getShopifyLocations()
               const shopDemoLocation = locations.find(l => l.name.toLowerCase() === 'shop demo')
               
               if (shopDemoLocation) {
+                console.log(`📝 Updating inventory via direct access...`)
                 await updateInventoryLevel(variant.inventory_item_id, shopDemoLocation.id, 31)
+                
                 return {
                   success: true,
                   found: true,
                   updated: true,
                   details: {
                     ...diagnosticResults,
-                    foundProduct: product.title,
-                    variantId: variant.id
+                    foundViaDirectAccess: true,
+                    productId: targetId,
+                    variantId: variant.id,
+                    solution: 'Direct product ID access bypasses pagination limits'
                   }
                 }
               }
-            }
-            
-            // Check for similar barcodes (partial matches, without leading zeros, etc.)
-            if (variant.barcode.includes(barcode.slice(1)) || 
-                barcode.includes(variant.barcode.slice(1)) ||
-                variant.barcode.replace(/^0+/, '') === barcode.replace(/^0+/, '')) {
-              diagnosticResults.similarBarcodes.push({
-                barcode: variant.barcode,
-                product: product.title,
-                status: product.status
-              })
-            }
-          }
-        }
-      }
-    }
-    
-    diagnosticResults.allBarcodes = allBarcodes.slice(0, 50) // First 50 for debugging
-    diagnosticResults.productTitles = allTitles.slice(0, 20) // First 20 for debugging
-    
-    console.log(`📊 DIAGNOSTIC RESULTS:`)
-    console.log(`   - Total products: ${diagnosticResults.totalProductsInShopify}`)
-    console.log(`   - Total barcodes: ${allBarcodes.length}`)
-    console.log(`   - Similar barcodes found: ${diagnosticResults.similarBarcodes.length}`)
-    console.log(`   - Sample barcodes:`, allBarcodes.slice(0, 10))
-    console.log(`   - Sample titles:`, allTitles.slice(0, 5))
-    
-    if (diagnosticResults.similarBarcodes.length > 0) {
-      console.log(`🔍 SIMILAR BARCODES:`, diagnosticResults.similarBarcodes)
-    }
-    
-    // Step 3: Try different product statuses (archived, draft, etc.)
-    console.log(`🔍 CHECKING ARCHIVED/DRAFT PRODUCTS...`)
-    try {
-      const archivedResponse = await shopifyApiRequest('/products.json?status=archived&limit=50')
-      const draftResponse = await shopifyApiRequest('/products.json?status=draft&limit=50')
-      
-      diagnosticResults.archivedProducts = (archivedResponse.products?.length || 0)
-      diagnosticResults.draftProducts = (draftResponse.products?.length || 0)
-      
-      console.log(`📊 Archived products: ${diagnosticResults.archivedProducts}`)
-      console.log(`📊 Draft products: ${diagnosticResults.draftProducts}`)
-      
-      // Check archived products for our barcode
-      const archivedProducts = archivedResponse.products || []
-      for (const product of archivedProducts) {
-        if (product.variants) {
-          for (const variant of product.variants) {
-            if (variant.barcode === barcode) {
-              console.log(`🎯 FOUND IN ARCHIVED PRODUCTS!`)
-              diagnosticResults.foundInArchived = true
-              break
             }
           }
         }
       }
     } catch (error) {
-      console.log(`⚠️ Could not check archived/draft products:`, error)
+      console.log(`❌ Direct access failed:`, error)
+      diagnosticResults.directAccessError = error instanceof Error ? error.message : 'Unknown error'
     }
     
     return {
       success: true,
       found: false,
       updated: false,
-      details: diagnosticResults
+      details: {
+        ...diagnosticResults,
+        conclusion: 'API pagination limited to ~298 products, but direct product access might work',
+        recommendation: 'Use GraphQL API or direct product ID calls instead of pagination'
+      }
     }
     
   } catch (error) {
