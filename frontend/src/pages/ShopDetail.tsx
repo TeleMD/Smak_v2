@@ -181,12 +181,12 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                 <button
                   onClick={async () => {
                     try {
-                      console.log('🎯 FOCUSED TEST: Testing specific product 4770175046139...')
+                      console.log('🔍 DIAGNOSTIC: Testing missing product 4770237043687...')
                       
                       const { testSingleProductUpdate } = await import('../services/shopify')
-                      const result = await testSingleProductUpdate('4770175046139')
+                      const result = await testSingleProductUpdate('4770237043687')
                       
-                      console.log('🎯 Focused test result:', result)
+                      console.log('🔍 Diagnostic result:', result)
                       
                       if (result.success) {
                         if (result.found && result.updated) {
@@ -204,9 +204,9 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                       alert(`Test failed: ${error}`)
                     }
                   }}
-                  className="ml-2 inline-flex items-center px-3 py-2 border border-yellow-300 text-sm font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100"
+                  className="ml-2 inline-flex items-center px-3 py-2 border border-orange-300 text-sm font-medium rounded-md text-orange-700 bg-orange-50 hover:bg-orange-100"
                 >
-                  🎯 Test Product 4770175046139
+                  🔍 Test Missing Product 4770237043687
                 </button>
                 <button
                   onClick={loadShopData}

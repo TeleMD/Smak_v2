@@ -603,6 +603,7 @@ export async function syncStoreStockToShopifyDirect(
     '4850009749600': '10357879406923', // preparation-of-tomatoes-with-poivrons
     '4030957351739': '10357886779723', // ker-u-sus-eggplant-preparation
     '4030957351753': '10357889827147', // preparation-of-aubergines-eggs
+    '4770237043687': '10790739673419', // dessert-based-on-cottage-cheese-strawberry-150-g
     // Add more as needed - this should cover many of the common products
   }
   
