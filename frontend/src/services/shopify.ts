@@ -558,8 +558,6 @@ export async function syncStoreStockToShopifyDirect(
   
   let processed = 0
   let found = 0
-  let updated = 0
-  let errors = 0
   
   // Filter to only products with barcodes
   const validInventory = inventory.filter(item => item.product?.barcode)
@@ -607,7 +605,7 @@ export async function syncStoreStockToShopifyDirect(
           barcode,
           success: false,
           error: 'Product not found in accessible products'
-        })
+        } as ShopifyPushResult)
         failedUpdates++
         continue
       }
@@ -628,7 +626,7 @@ export async function syncStoreStockToShopifyDirect(
         shopifyVariantId: variant.id,
         previousQuantity: 0, // We don't track this for now
         newQuantity
-      })
+      } as ShopifyPushResult)
       
     } catch (error) {
       console.error(`❌ Error processing ${barcode}:`, error)
@@ -637,7 +635,7 @@ export async function syncStoreStockToShopifyDirect(
         barcode,
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
-      })
+      } as ShopifyPushResult)
     }
   }
   
