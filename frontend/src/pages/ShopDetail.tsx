@@ -176,7 +176,7 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                   ) : (
                     <Share2 className="h-4 w-4 mr-2" />
                   )}
-                  {isSyncing ? 'Syncing...' : 'Sync to Shopify'}
+                  {isSyncing ? 'Syncing...' : '🚀 Direct Sync to Shopify'}
                 </button>
                 <button
                   onClick={async () => {

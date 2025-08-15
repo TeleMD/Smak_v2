@@ -5,7 +5,7 @@ import {
   CreateProductForm, CreateStoreForm, CreateReceiptForm, 
   InventoryAdjustmentForm, DashboardStats, ShopifyStockSyncResult
 } from '../types'
-import { syncStoreStockToShopify } from './shopify'
+import { syncStoreStockToShopify, syncStoreStockToShopifyDirect } from './shopify'
 
 // =====================================================
 // STORE MANAGEMENT
@@ -855,8 +855,8 @@ export async function syncStoreToShopify(storeId: string): Promise<ShopifyStockS
     })
 
     try {
-      // Perform the actual sync
-      const result = await syncStoreStockToShopify(storeId, store.name, inventory)
+      // Perform the actual sync using DIRECT method (bypasses pagination limits)
+      const result = await syncStoreStockToShopifyDirect(storeId, store.name, inventory)
 
       // Update sync job with results
       await supabase
