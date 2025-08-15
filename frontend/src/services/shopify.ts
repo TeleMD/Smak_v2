@@ -699,7 +699,7 @@ export async function syncStoreStockToShopifyDirect(
           console.log(`📊 Progress: ${processed}/${validInventory.length} (${Math.round(processed/validInventory.length*100)}%)`)
         }
         
-        const bulkVariant = bulkResults[barcode]
+        const bulkVariant = bulkResults.get(barcode)
         
         if (bulkVariant) {
           found++
