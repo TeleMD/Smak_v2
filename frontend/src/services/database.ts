@@ -5,7 +5,7 @@ import {
   CreateProductForm, CreateStoreForm, CreateReceiptForm, 
   InventoryAdjustmentForm, DashboardStats, ShopifyStockSyncResult
 } from '../types'
-import { syncStoreStockToShopify, syncStoreStockToShopifyDirect } from './shopify'
+import { syncStoreStockToShopifyDirect } from './shopify'
 
 // =====================================================
 // STORE MANAGEMENT
