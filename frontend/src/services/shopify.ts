@@ -603,9 +603,9 @@ export async function syncStoreStockToShopifyDirect(
         console.log(`❌ Product not found: ${barcode}`)
         results.push({
           barcode,
-          success: false,
-          error: 'Product not found in accessible products'
-        } as ShopifyPushResult)
+          status: 'error',
+          message: 'Product not found in accessible products'
+        })
         failedUpdates++
         continue
       }
@@ -622,20 +622,20 @@ export async function syncStoreStockToShopifyDirect(
       
       results.push({
         barcode,
-        success: true,
-        shopifyVariantId: variant.id,
-        previousQuantity: 0, // We don't track this for now
-        newQuantity
-      } as ShopifyPushResult)
+        status: 'success',
+        message: `Updated inventory to ${newQuantity}`,
+        shopify_variant_id: variant.id,
+        shopify_inventory_item_id: variant.inventory_item_id
+      })
       
     } catch (error) {
       console.error(`❌ Error processing ${barcode}:`, error)
       failedUpdates++
       results.push({
         barcode,
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      } as ShopifyPushResult)
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      })
     }
   }
   
@@ -650,14 +650,14 @@ export async function syncStoreStockToShopifyDirect(
   console.log(`   - Duration: ${Math.round(duration/1000)}s`)
   
   return {
-    success: successfulUpdates > 0,
-    results,
-    summary: {
-      totalProducts: validInventory.length,
-      successfulUpdates,
-      failedUpdates,
-      duration
-    }
+    store_id: storeId,
+    store_name: storeName,
+    total_products: validInventory.length,
+    successful_updates: successfulUpdates,
+    failed_updates: failedUpdates,
+    skipped_products: 0,
+    processing_time_ms: duration,
+    results
   }
 }
 

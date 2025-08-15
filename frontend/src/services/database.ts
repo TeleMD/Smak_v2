@@ -863,9 +863,9 @@ export async function syncStoreToShopify(storeId: string): Promise<ShopifyStockS
         .from('sync_jobs')
         .update({
           status: 'completed',
-          processed_records: result.summary.totalProducts,
-          successful_records: result.summary.successfulUpdates,
-          failed_records: result.summary.failedUpdates,
+          processed_records: result.total_products,
+          successful_records: result.successful_updates,
+          failed_records: result.failed_updates,
           completed_at: new Date().toISOString(),
           job_data: {
             ...syncJob.job_data,
