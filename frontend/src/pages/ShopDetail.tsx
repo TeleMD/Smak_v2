@@ -181,28 +181,21 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                 <button
                   onClick={async () => {
                     try {
-                      console.log('🧪 TESTING: New optimized sync...')
+                      console.log('🎯 FOCUSED TEST: Testing specific product 4770175046139...')
                       
-                      // Test with a sample barcode from inventory
-                      const sampleItem = inventory.find(i => i.product?.barcode)
-                      if (!sampleItem?.product?.barcode) {
-                        alert('No products with barcodes found to test')
-                        return
-                      }
+                      const { testSingleProductUpdate } = await import('../services/shopify')
+                      const result = await testSingleProductUpdate('4770175046139')
                       
-                      const testBarcode = sampleItem.product.barcode
-                      console.log(`🔍 Testing with barcode: ${testBarcode}`)
-                      
-                      const { testShopifySyncOptimizations } = await import('../services/shopify')
-                      const result = await testShopifySyncOptimizations(testBarcode)
-                      
-                      console.log('🧪 Test result:', result)
+                      console.log('🎯 Focused test result:', result)
                       
                       if (result.success) {
-                        const message = result.variantFound 
-                          ? `✅ Success! Found variant in ${result.searchTime}ms` 
-                          : `ℹ️ Search completed in ${result.searchTime}ms (no variant found)`
-                        alert(message)
+                        if (result.found && result.updated) {
+                          alert(`✅ SUCCESS! Product found and updated!\n\nDetails:\n- Found: ${result.found}\n- Updated: ${result.updated}\n- Products searched: ${result.details.totalProductsSearched}`)
+                        } else if (result.found && !result.updated) {
+                          alert(`⚠️ Product found but update failed:\n${JSON.stringify(result.details, null, 2)}`)
+                        } else {
+                          alert(`❌ Product NOT found after searching ${result.details.totalProductsSearched || 'unknown'} products`)
+                        }
                       } else {
                         alert(`❌ Test failed: ${result.error}`)
                       }
@@ -211,9 +204,9 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                       alert(`Test failed: ${error}`)
                     }
                   }}
-                  className="ml-2 inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  className="ml-2 inline-flex items-center px-3 py-2 border border-yellow-300 text-sm font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100"
                 >
-                  🧪 Test
+                  🎯 Test Product 4770175046139
                 </button>
                 <button
                   onClick={loadShopData}

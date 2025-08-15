@@ -820,6 +820,156 @@ export async function validateShopifyCredentials(): Promise<{ valid: boolean; sh
   }
 }
 
+// FOCUSED TEST: Try to find and update ONE specific product
+export async function testSingleProductUpdate(barcode: string = '4770175046139'): Promise<{
+  success: boolean
+  found: boolean
+  updated: boolean
+  details: any
+  error?: string
+}> {
+  console.log(`🎯 FOCUSED TEST: Testing barcode ${barcode}`)
+  
+  try {
+    // Step 1: Get all Shopify locations
+    console.log(`📍 Step 1: Getting Shopify locations...`)
+    const locations = await getShopifyLocations()
+    console.log(`📍 Available locations:`, locations.map(l => ({ id: l.id, name: l.name })))
+    
+    // Step 2: Find Shop Demo location
+    const shopDemoLocation = locations.find(l => l.name.toLowerCase() === 'shop demo')
+    if (!shopDemoLocation) {
+      throw new Error('Shop Demo location not found')
+    }
+    console.log(`✅ Found Shop Demo location: ID ${shopDemoLocation.id}`)
+    
+    // Step 3: Try EVERY possible way to find this product
+    console.log(`🔍 Step 3: Searching for product with barcode ${barcode}...`)
+    
+    // Method 1: Direct search through products (no limits)
+    let variant = null
+    let searchMethod = ''
+    
+    // Try unlimited search
+    let sinceId = 0
+    let totalSearched = 0
+    const limit = 250
+    
+    console.log(`🔍 Method 1: Unlimited product search...`)
+    for (let attempt = 1; attempt <= 20; attempt++) { // Try up to 20 pages (5000 products)
+      console.log(`📄 Attempt ${attempt}: Searching since ID ${sinceId}, total searched: ${totalSearched}`)
+      
+      const endpoint = sinceId > 0 
+        ? `/products.json?fields=id,title,variants&limit=${limit}&since_id=${sinceId}`
+        : `/products.json?fields=id,title,variants&limit=${limit}`
+        
+      const response = await shopifyApiRequest(endpoint)
+      const products: ShopifyProduct[] = response.products || []
+      
+      console.log(`📦 Found ${products.length} products in attempt ${attempt}`)
+      
+      if (products.length === 0) {
+        console.log(`📋 No more products found after ${totalSearched} total products`)
+        break
+      }
+      
+      // Search through this batch
+      for (const product of products) {
+        if (product.variants) {
+          for (const productVariant of product.variants) {
+            // Check if this is our target barcode
+            if (productVariant.barcode === barcode) {
+              variant = productVariant
+              searchMethod = `Found on attempt ${attempt}, product: "${product.title}"`
+              console.log(`🎯 FOUND TARGET PRODUCT!`)
+              console.log(`   - Product: ${product.title}`)
+              console.log(`   - Variant ID: ${productVariant.id}`)
+              console.log(`   - Barcode: ${productVariant.barcode}`)
+              console.log(`   - Inventory Item ID: ${productVariant.inventory_item_id}`)
+              break
+            }
+          }
+        }
+        if (variant) break
+      }
+      
+      if (variant) break
+      
+      totalSearched += products.length
+      if (products.length > 0) {
+        sinceId = products[products.length - 1].id
+      }
+      
+      // If we got fewer than limit, we've reached the end
+      if (products.length < limit) {
+        console.log(`📋 Reached end of products after searching ${totalSearched} total`)
+        break
+      }
+    }
+    
+    if (!variant) {
+      return {
+        success: true,
+        found: false,
+        updated: false,
+        details: {
+          searchMethod: 'Product not found after searching all available products',
+          totalProductsSearched: totalSearched,
+          maxAttemptsReached: totalSearched >= 5000
+        }
+      }
+    }
+    
+    // Step 4: Get current inventory level
+    console.log(`📊 Step 4: Getting current inventory levels...`)
+    const currentLevels = await getInventoryLevels(variant.inventory_item_id)
+    console.log(`📊 Current inventory levels:`, currentLevels)
+    
+    const currentLevel = currentLevels.find(level => level.location_id === shopDemoLocation.id)
+    const inventoryBefore = currentLevel ? currentLevel.available : 0
+    console.log(`📊 Current inventory at Shop Demo: ${inventoryBefore}`)
+    
+    // Step 5: Update inventory to 31 (the expected quantity)
+    console.log(`📝 Step 5: Updating inventory to 31...`)
+    const newQuantity = 31
+    
+    await updateInventoryLevel(
+      variant.inventory_item_id,
+      shopDemoLocation.id,
+      newQuantity
+    )
+    
+    console.log(`✅ SUCCESSFULLY UPDATED INVENTORY!`)
+    console.log(`   - From: ${inventoryBefore}`)
+    console.log(`   - To: ${newQuantity}`)
+    
+    return {
+      success: true,
+      found: true,
+      updated: true,
+      details: {
+        searchMethod,
+        variantId: variant.id,
+        inventoryItemId: variant.inventory_item_id,
+        locationId: shopDemoLocation.id,
+        inventoryBefore,
+        inventoryAfter: newQuantity,
+        totalProductsSearched: totalSearched
+      }
+    }
+    
+  } catch (error) {
+    console.error(`❌ Test failed:`, error)
+    return {
+      success: false,
+      found: false,
+      updated: false,
+      details: {},
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+}
+
 // Test function to validate the sync improvements
 export async function testShopifySyncOptimizations(testBarcode: string): Promise<{
   success: boolean
