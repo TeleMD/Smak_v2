@@ -384,17 +384,16 @@ export async function findMultipleShopifyVariantsByBarcodes(barcodes: string[]):
 
 export async function findShopifyVariantByBarcode(barcode: string): Promise<ShopifyVariant | null> {
   try {
-    console.log(`🔍 Optimized search for barcode: ${barcode}`)
+    console.log(`🔍 Comprehensive individual search for barcode: ${barcode}`)
     
-    // Use cursor-based pagination with reasonable limits for sync performance
+    // For individual searches, search ALL products without limits to ensure we find it
     let sinceId = 0
     let searchedProducts = 0
     const limit = 250
-    const maxProductsToSearch = 2000 // Reasonable limit for sync performance
     let consecutiveEmptyBatches = 0
-    const maxEmptyBatches = 2 // Stop after 2 consecutive empty batches
+    const maxEmptyBatches = 5 // More patience for individual searches
     
-    while (searchedProducts < maxProductsToSearch && consecutiveEmptyBatches < maxEmptyBatches) {
+    while (consecutiveEmptyBatches < maxEmptyBatches) {
       console.log(`📄 Searching products since ID ${sinceId}... (searched: ${searchedProducts})`)
       
       try {
@@ -457,10 +456,42 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
     
     console.log(`❌ No variant found for barcode: ${barcode} after searching ${searchedProducts} products with cursor-based pagination`)
     
-    // If comprehensive search didn't find it, the product might not exist in Shopify
-    // Log this for debugging but don't do expensive alternative searches during sync
+    // Try one more approach: search with a very broad ID range
+    console.log(`🔄 Final attempt: searching with different ID strategies for ${barcode}`)
     
-    console.log(`❌ No variant found for barcode: ${barcode} after comprehensive search`)
+    const largeIdRanges = [10000000, 50000000, 100000000, 500000000] // Try very large ID ranges
+    
+    for (const startId of largeIdRanges) {
+      try {
+        console.log(`📄 Trying search from very large product ID ${startId}...`)
+        const response = await shopifyApiRequest(`/products.json?fields=id,title,variants&limit=250&since_id=${startId}`)
+        const products: ShopifyProduct[] = response.products || []
+        
+        if (products.length === 0) continue
+        
+        console.log(`📦 Found ${products.length} products starting from large ID ${startId}`)
+        
+        for (const product of products) {
+          if (product.variants) {
+            for (const variant of product.variants) {
+              const matchResult = matchesBarcode(variant.barcode, barcode)
+              
+              if (matchResult.matches) {
+                console.log(`✅ FOUND ${barcode} using large ID range search! (${matchResult.strategy} match)`)
+                console.log(`   - Product: ${product.title}`)
+                console.log(`   - Variant ID: ${variant.id}`)
+                console.log(`   - Shopify barcode: "${variant.barcode}"`)
+                return variant
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Large ID range search failed for ${startId}:`, error)
+      }
+    }
+    
+    console.log(`❌ No variant found for barcode: ${barcode} after comprehensive search including large ID ranges`)
     return null
   } catch (error) {
     console.error('Error finding Shopify variant by barcode:', error)
@@ -579,6 +610,24 @@ export async function syncStoreStockToShopify(
   const bulkSearchResults = await findMultipleShopifyVariantsByBarcodes(allBarcodes)
   
   console.log(`📊 Bulk search found ${bulkSearchResults.size}/${allBarcodes.length} variants`)
+  
+  // For any missing products, try individual comprehensive search
+  const missingBarcodes = allBarcodes.filter(barcode => !bulkSearchResults.has(barcode))
+  console.log(`🔍 Attempting individual search for ${missingBarcodes.length} missing products...`)
+  
+  for (const barcode of missingBarcodes) {
+    if (barcode === '4770175046139') {
+      console.log(`🎯 Trying comprehensive individual search for 4770175046139...`)
+    }
+    
+    const variant = await findShopifyVariantByBarcode(barcode)
+    if (variant) {
+      bulkSearchResults.set(barcode, variant)
+      console.log(`✅ Found missing product ${barcode} via individual search`)
+    }
+  }
+  
+  console.log(`📊 After individual searches: ${bulkSearchResults.size}/${allBarcodes.length} variants found`)
   
   // Process each inventory item with pre-found variants
   for (let i = 0; i < validInventory.length; i++) {
