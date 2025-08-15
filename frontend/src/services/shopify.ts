@@ -319,7 +319,7 @@ export async function findMultipleShopifyVariantsByBarcodes(barcodes: string[]):
   let sinceId = 0
   let searchedProducts = 0
   const limit = 250
-  const maxProductsToSearch = 2000
+  const maxProductsToSearch = 2000 // Keep reasonable limit for bulk search performance
   let consecutiveEmptyBatches = 0
   const maxEmptyBatches = 2
   
@@ -445,7 +445,7 @@ export async function findShopifyVariantByBarcode(barcode: string): Promise<Shop
         
         // Progress reporting every 500 products
         if (searchedProducts % 500 === 0 && searchedProducts > 0) {
-          console.log(`📊 Progress: searched ${searchedProducts}/${maxProductsToSearch} products so far...`)
+          console.log(`📊 Progress: searched ${searchedProducts} products so far...`)
         }
         
       } catch (error) {
