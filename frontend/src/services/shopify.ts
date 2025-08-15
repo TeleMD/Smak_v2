@@ -161,9 +161,34 @@ export async function getShopifyLocations(): Promise<ShopifyLocation[]> {
 
 export async function findShopifyLocationByName(locationName: string): Promise<ShopifyLocation | null> {
   const locations = await getShopifyLocations()
-  return locations.find(location => 
+  
+  console.log(`🔍 Looking for Shopify location: "${locationName}"`)
+  console.log(`📍 Available Shopify locations:`, locations.map(l => ({
+    id: l.id,
+    name: l.name,
+    active: l.active
+  })))
+  
+  const match = locations.find(location => 
     location.name.toLowerCase() === locationName.toLowerCase()
-  ) || null
+  )
+  
+  if (match) {
+    console.log(`✅ Found matching location: ${match.name} (ID: ${match.id})`)
+  } else {
+    console.log(`❌ No exact match found for "${locationName}"`)
+    // Try partial matching
+    const partialMatch = locations.find(location => 
+      location.name.toLowerCase().includes(locationName.toLowerCase()) ||
+      locationName.toLowerCase().includes(location.name.toLowerCase())
+    )
+    if (partialMatch) {
+      console.log(`⚠️ Found partial match: ${partialMatch.name} (ID: ${partialMatch.id})`)
+      return partialMatch
+    }
+  }
+  
+  return match || null
 }
 
 // =====================================================
@@ -324,6 +349,16 @@ export async function findMultipleShopifyVariantsByBarcodes(barcodes: string[]):
                 results.set(barcode, variant)
                 remainingBarcodes.delete(barcode)
                 console.log(`✅ Found variant for barcode ${barcode} (${matchResult.strategy} match)`)
+                
+                // Special logging for problematic barcode
+                if (barcode === '4770175046139') {
+                  console.log(`🎯 FOUND 4770175046139 in bulk search!`)
+                  console.log(`   - Product: ${product.title}`)
+                  console.log(`   - Variant ID: ${variant.id}`)
+                  console.log(`   - Shopify barcode: "${variant.barcode}"`)
+                  console.log(`   - Search barcode: "${barcode}"`)
+                  console.log(`   - Match strategy: ${matchResult.strategy}`)
+                }
               }
             }
           }
@@ -557,6 +592,21 @@ export async function syncStoreStockToShopify(
       // Get the pre-found Shopify variant from bulk search
       const shopifyVariant = bulkSearchResults.get(product.barcode!)
       
+      // Special detailed logging for the specific problematic barcode
+      if (product.barcode === '4770175046139') {
+        console.log(`🎯 SPECIAL DEBUG for barcode 4770175046139:`)
+        console.log(`   - Bulk search found variant:`, shopifyVariant ? 'YES' : 'NO')
+        if (shopifyVariant) {
+          console.log(`   - Variant details:`, {
+            variant_id: shopifyVariant.id,
+            inventory_item_id: shopifyVariant.inventory_item_id,
+            stored_barcode: shopifyVariant.barcode
+          })
+        }
+        console.log(`   - Target location: ${shopifyLocation.name} (ID: ${shopifyLocation.id})`)
+        console.log(`   - Expected quantity: ${inventoryItem.available_quantity}`)
+      }
+      
       if (!shopifyVariant) {
         console.log(`❌ [${progress}] Product not found in Shopify: ${product.barcode}`)
         results.push({
@@ -572,12 +622,32 @@ export async function syncStoreStockToShopify(
 
       // Get current inventory levels for this item
       let inventoryBefore = 0
+      let currentLevels: ShopifyInventoryLevel[] = []
       try {
-        const currentLevels = await getInventoryLevels(shopifyVariant.inventory_item_id)
+        currentLevels = await getInventoryLevels(shopifyVariant.inventory_item_id)
         const currentLevel = currentLevels.find(level => level.location_id === shopifyLocation.id)
         inventoryBefore = currentLevel ? currentLevel.available : 0
+        
+        // Special detailed logging for the specific problematic barcode
+        if (product.barcode === '4770175046139') {
+          console.log(`🎯 INVENTORY LEVELS for 4770175046139:`)
+          console.log(`   - All locations for this product:`, currentLevels.map(level => ({
+            location_id: level.location_id,
+            available: level.available
+          })))
+          console.log(`   - Current level at target location (${shopifyLocation.id}):`, inventoryBefore)
+        }
       } catch (error) {
         console.warn(`⚠️ [${progress}] Could not get current inventory levels, assuming 0:`, error)
+      }
+
+      // Special logging before update for problematic barcode
+      if (product.barcode === '4770175046139') {
+        console.log(`🎯 ABOUT TO UPDATE 4770175046139:`)
+        console.log(`   - Inventory Item ID: ${shopifyVariant.inventory_item_id}`)
+        console.log(`   - Location ID: ${shopifyLocation.id}`)
+        console.log(`   - New Quantity: ${inventoryItem.available_quantity}`)
+        console.log(`   - Previous Quantity: ${inventoryBefore}`)
       }
 
       // Update the inventory level
