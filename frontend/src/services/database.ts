@@ -437,6 +437,32 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
     console.log(`🚀 CSV UPLOAD: Starting upload with ${csvData.length} rows`)
     console.log(`📋 First 3 rows sample:`, csvData.slice(0, 3))
     
+    // Check CSV column structure
+    if (csvData.length > 0) {
+      const firstRow = csvData[0]
+      const columnNames = Object.keys(firstRow)
+      console.log(`📊 CSV COLUMNS (${columnNames.length} total):`, columnNames)
+      
+      // Check for barcode and quantity columns specifically
+      const barcodeColumns = columnNames.filter(col => 
+        ['barcode', 'sku', 'code', 'product_code', 'Barcode'].some(name => 
+          col.toLowerCase() === name.toLowerCase() || 
+          col.toLowerCase().includes(name.toLowerCase()) ||
+          name.toLowerCase().includes(col.toLowerCase())
+        )
+      )
+      const quantityColumns = columnNames.filter(col => 
+        ['quantity', 'qty', 'stock', 'count', 'Quantity'].some(name => 
+          col.toLowerCase() === name.toLowerCase() || 
+          col.toLowerCase().includes(name.toLowerCase()) ||
+          name.toLowerCase().includes(col.toLowerCase())
+        )
+      )
+      
+      console.log(`🔍 Detected barcode columns:`, barcodeColumns)
+      console.log(`🔍 Detected quantity columns:`, quantityColumns)
+    }
+    
     // Check for our specific barcode in the CSV
     const targetRow = csvData.find(row => {
       const keys = Object.keys(row)
