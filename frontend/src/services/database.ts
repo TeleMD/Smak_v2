@@ -492,9 +492,19 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
         console.log(`📊 Processing progress: ${processedRows}/${csvData.length} rows`)
       }
       try {
-        // Find barcode column (using store-specific mapping)
-        const barcodeValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'barcode')
-        const quantityValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'quantity')
+        // Find barcode column (with fallback if mapping fails)
+        let barcodeValue: string | null = null
+        let quantityValue: string | null = null
+        
+        try {
+          barcodeValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'barcode')
+          quantityValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'quantity')
+        } catch (mappingError) {
+          // Fallback to direct column search if mapping fails
+          console.warn(`Column mapping failed, using fallback:`, mappingError)
+          barcodeValue = findColumnValue(row, ['barcode', 'Barcode', 'SKU', 'code'])
+          quantityValue = findColumnValue(row, ['quantity', 'Quantity', 'qty', 'stock'])
+        }
 
         // Special debugging for our target barcode
         if (barcodeValue === '4770237043687') {
@@ -567,9 +577,20 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
 
         if (!product) {
           // Create new product if it doesn't exist
-          const nameValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'name')
-          const categoryValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'category')
-          const priceValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'price')
+          let nameValue: string | null = null
+          let categoryValue: string | null = null
+          let priceValue: string | null = null
+          
+          try {
+            nameValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'name')
+            categoryValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'category')
+            priceValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'price')
+          } catch (mappingError) {
+            // Fallback to direct column search
+            nameValue = findColumnValue(row, ['name', 'Item name', 'product_name', 'title'])
+            categoryValue = findColumnValue(row, ['category', 'Category', 'type', 'group'])
+            priceValue = findColumnValue(row, ['price', 'Price', 'unit_price', 'cost'])
+          }
           
           if (barcodeValue === '4770237043687') {
             console.log(`🆕 Target barcode creating new product:`)
@@ -731,9 +752,21 @@ export async function uploadSupplierDelivery(
     const receiptItems: any[] = []
     for (const row of csvData) {
       try {
-        const barcodeValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'barcode')
-        const quantityValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'quantity')
-        const unitCostValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'price')
+        let barcodeValue: string | null = null
+        let quantityValue: string | null = null
+        let unitCostValue: string | null = null
+        
+        try {
+          barcodeValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'barcode')
+          quantityValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'quantity')
+          unitCostValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'price')
+        } catch (mappingError) {
+          // Fallback to direct column search if mapping fails
+          console.warn(`Supplier delivery column mapping failed, using fallback:`, mappingError)
+          barcodeValue = findColumnValue(row, ['barcode', 'Barcode', 'SKU', 'code'])
+          quantityValue = findColumnValue(row, ['quantity', 'Quantity', 'qty', 'stock'])
+          unitCostValue = findColumnValue(row, ['price', 'unit_price', 'cost', 'unit_cost'])
+        }
 
         if (!barcodeValue || quantityValue === null || quantityValue === undefined) {
           results.push({
