@@ -551,6 +551,11 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           quantityValue = findColumnValue(row, ['quantity', 'Quantity', 'qty', 'stock'])
         }
 
+        // Debug EVERY row to see where target barcode is lost
+        if (processedRows <= 5 || processedRows % 100 === 0 || (barcodeValue && barcodeValue.includes('4770237043687'))) {
+          console.log(`🔍 ROW ${processedRows}: barcode="${barcodeValue}", quantity="${quantityValue}"`)
+        }
+
         // Special debugging for our target barcode
         if (barcodeValue === '4770237043687') {
           console.log(`🎯 PROCESSING target barcode 4770237043687:`)
@@ -564,6 +569,9 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
 
         // Skip rows with invalid/empty barcodes (but don't count as errors)
         if (!barcodeValue || barcodeValue.trim() === '' || barcodeValue.toLowerCase() === 'n1' || barcodeValue.length < 3) {
+          if (processedRows <= 5) {
+            console.log(`⏭️ SKIPPING ROW ${processedRows}: invalid barcode="${barcodeValue}"`)
+          }
           continue // Skip silently - these are likely empty rows or invalid entries
         }
         
