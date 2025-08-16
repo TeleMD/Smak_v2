@@ -434,14 +434,55 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
     let errors = 0
     let newProducts = 0
 
+    console.log(`🚀 CSV UPLOAD: Starting upload with ${csvData.length} rows`)
+    console.log(`📋 First 3 rows sample:`, csvData.slice(0, 3))
+    
+    // Check for our specific barcode in the CSV
+    const targetRow = csvData.find(row => {
+      const keys = Object.keys(row)
+      return keys.some(key => {
+        const value = row[key]
+        return value && value.toString().includes('4770237043687')
+      })
+    })
+    
+    if (targetRow) {
+      console.log(`🎯 FOUND target barcode 4770237043687 in CSV:`, targetRow)
+    } else {
+      console.log(`❌ Target barcode 4770237043687 NOT FOUND in CSV`)
+      console.log(`📊 Sample barcodes from CSV:`, csvData.slice(0, 10).map(row => {
+        const keys = Object.keys(row)
+        const barcodeKey = keys.find(k => k.toLowerCase().includes('barcode') || k.toLowerCase().includes('code'))
+        return barcodeKey ? row[barcodeKey] : 'No barcode'
+      }))
+    }
+
     // Process each row in the CSV
+    let processedRows = 0
     for (const row of csvData) {
+      processedRows++
+      
+      if (processedRows % 100 === 0) {
+        console.log(`📊 Processing progress: ${processedRows}/${csvData.length} rows`)
+      }
       try {
         // Find barcode/SKU column (using store-specific mapping)
         const barcodeValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'barcode')
         const quantityValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'quantity')
 
+        // Special debugging for our target barcode
+        if (barcodeValue === '4770237043687') {
+          console.log(`🎯 PROCESSING target barcode 4770237043687:`)
+          console.log(`   - Row data:`, row)
+          console.log(`   - Extracted barcode: "${barcodeValue}"`)
+          console.log(`   - Extracted quantity: "${quantityValue}"`)
+          console.log(`   - Row ${processedRows}/${csvData.length}`)
+        }
+
         if (!barcodeValue || quantityValue === null || quantityValue === undefined) {
+          if (barcodeValue === '4770237043687') {
+            console.log(`❌ Target barcode FAILED validation: barcode="${barcodeValue}", quantity="${quantityValue}"`)
+          }
           results.push({
             barcode: barcodeValue || 'Unknown',
             status: 'error',
@@ -522,6 +563,22 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
         })
         errors++
       }
+    }
+
+    console.log(`✅ CSV UPLOAD COMPLETE:`)
+    console.log(`   - Total rows in CSV: ${csvData.length}`)
+    console.log(`   - Rows processed: ${processedRows}`)
+    console.log(`   - Successful updates: ${successfulUpdates}`)
+    console.log(`   - New products created: ${newProducts}`)
+    console.log(`   - Errors: ${errors}`)
+    console.log(`   - Results count: ${results.length}`)
+    
+    // Check if our target was processed
+    const targetResult = results.find(r => r.barcode === '4770237043687')
+    if (targetResult) {
+      console.log(`🎯 Target barcode 4770237043687 result:`, targetResult)
+    } else {
+      console.log(`❌ Target barcode 4770237043687 was NOT processed`)
     }
 
     return {
