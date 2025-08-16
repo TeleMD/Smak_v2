@@ -863,6 +863,7 @@ interface StoreCsvMapping {
   store_id: string
   mapping_name: string
   barcode_columns: string[]
+  sku_columns?: string[]
   name_columns: string[]
   quantity_columns: string[]
   price_columns?: string[]
