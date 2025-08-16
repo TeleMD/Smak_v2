@@ -553,8 +553,28 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
 
         // Find existing product by barcode or SKU
         let product = await getProductByBarcode(barcodeValue)
-        if (!product) {
-          product = await getProductBySku(barcodeValue)
+        if (barcodeValue === '4770237043687') {
+          console.log(`🔍 Target barcode searching for existing product by barcode: found=${!!product}`)
+          if (product) {
+            console.log(`   - Found product:`, product)
+          }
+        }
+        
+        if (!product && skuValue && skuValue.trim() !== '') {
+          product = await getProductBySku(skuValue)
+          if (barcodeValue === '4770237043687') {
+            console.log(`🔍 Target barcode searching for existing product by SKU "${skuValue}": found=${!!product}`)
+            if (product) {
+              console.log(`   - Found product by SKU:`, product)
+            }
+          }
+        }
+
+        if (barcodeValue === '4770237043687') {
+          console.log(`🎯 Target barcode final product lookup result: ${product ? 'FOUND' : 'NOT FOUND'}`)
+          if (product) {
+            console.log(`   - Product details: id=${product.id}, name="${product.name}", sku="${product.sku}"`)
+          }
         }
 
         if (!product) {
@@ -755,8 +775,8 @@ export async function uploadSupplierDelivery(
 
         // Find existing product by barcode or SKU
         let product = await getProductByBarcode(barcodeValue)
-        if (!product) {
-          product = await getProductBySku(barcodeValue)
+        if (!product && skuValue && skuValue.trim() !== '') {
+          product = await getProductBySku(skuValue)
         }
 
         if (!product) {
