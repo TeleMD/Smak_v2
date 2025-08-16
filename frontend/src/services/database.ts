@@ -92,14 +92,59 @@ export async function getProduct(id: string): Promise<Product | null> {
 }
 
 export async function createProduct(product: CreateProductForm): Promise<Product> {
+  console.log(`🔨 ATTEMPTING TO CREATE PRODUCT:`, product)
+  
   const { data, error } = await supabase
     .from('products')
     .insert([product])
     .select()
     .single()
 
-  if (error) throw error
+  if (error) {
+    console.error(`❌ PRODUCT CREATION FAILED:`, error)
+    throw error
+  }
+  
+  console.log(`✅ PRODUCT CREATED SUCCESSFULLY:`, data)
   return data
+}
+
+// Test function to verify database write permissions
+export async function testDatabaseWrite(): Promise<void> {
+  try {
+    console.log(`🧪 TESTING DATABASE WRITE PERMISSIONS...`)
+    
+    // Check current auth status
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    console.log(`👤 Current user:`, user)
+    console.log(`👤 Auth error:`, authError)
+    
+    // Try to create a test product
+    const testProduct: CreateProductForm = {
+      sku: `TEST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      barcode: `TEST-${Date.now()}`,
+      name: 'Test Product for Database Write Verification'
+    }
+    
+    const result = await createProduct(testProduct)
+    console.log(`✅ DATABASE WRITE TEST SUCCESSFUL:`, result)
+    
+    // Clean up - delete the test product
+    const { error: deleteError } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', result.id)
+    
+    if (deleteError) {
+      console.warn(`⚠️ Failed to clean up test product:`, deleteError)
+    } else {
+      console.log(`🧹 Test product cleaned up successfully`)
+    }
+    
+  } catch (error) {
+    console.error(`❌ DATABASE WRITE TEST FAILED:`, error)
+    throw error
+  }
 }
 
 export async function updateProduct(id: string, updates: Partial<Product>): Promise<Product> {

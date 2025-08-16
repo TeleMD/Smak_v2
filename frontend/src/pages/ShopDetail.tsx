@@ -209,6 +209,24 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                   🔍 Test Missing Product 4770237043687
                 </button>
                 <button
+                  onClick={async () => {
+                    try {
+                      console.log('🧪 TESTING DATABASE WRITE PERMISSIONS...')
+                      
+                      const { testDatabaseWrite } = await import('../services/database')
+                      await testDatabaseWrite()
+                      
+                      alert('✅ Database write test PASSED! Check console for details.')
+                    } catch (error) {
+                      console.error('❌ Database write test FAILED:', error)
+                      alert(`❌ Database write test FAILED: ${error}`)
+                    }
+                  }}
+                  className="ml-2 inline-flex items-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100"
+                >
+                  🧪 Test Database Write
+                </button>
+                <button
                   onClick={loadShopData}
                   className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                 >
