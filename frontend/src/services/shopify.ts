@@ -659,6 +659,19 @@ export async function syncStoreStockToShopifyDirect(
       
       // Update inventory - use available quantity (not total quantity)
       const newQuantity = item.available_quantity
+      
+      // Special debugging for problematic barcode
+      if (barcode === '4770237043687') {
+        console.log(`🎯 DEBUGGING FULL SYNC for 4770237043687:`)
+        console.log(`   - Database quantity: ${item.quantity}`)
+        console.log(`   - Database reserved_quantity: ${item.reserved_quantity}`)
+        console.log(`   - Database available_quantity: ${item.available_quantity}`)
+        console.log(`   - Using newQuantity: ${newQuantity}`)
+        console.log(`   - Product ID: ${item.product_id}`)
+        console.log(`   - Store ID: ${item.store_id}`)
+        console.log(`   - Full item:`, JSON.stringify(item, null, 2))
+      }
+      
       await updateInventoryLevel(variant.inventory_item_id, shopDemoLocation.id, newQuantity)
       
       successfulUpdates++
@@ -705,8 +718,19 @@ export async function syncStoreStockToShopifyDirect(
         if (bulkVariant) {
           found++
           
-          // Update inventory - use available quantity (not total quantity)
+          // Update inventory - use available quantity (not total quantity)  
           const newQuantity = item.available_quantity
+          
+          // Special debugging for problematic barcode
+          if (barcode === '4770237043687') {
+            console.log(`🎯 DEBUGGING FULL SYNC Phase 2 for 4770237043687:`)
+            console.log(`   - Database quantity: ${item.quantity}`)
+            console.log(`   - Database reserved_quantity: ${item.reserved_quantity}`)
+            console.log(`   - Database available_quantity: ${item.available_quantity}`)
+            console.log(`   - Using newQuantity: ${newQuantity}`)
+            console.log(`   - Found via bulk search`)
+          }
+          
           await updateInventoryLevel(bulkVariant.inventory_item_id, shopDemoLocation.id, newQuantity)
           
           successfulUpdates++
