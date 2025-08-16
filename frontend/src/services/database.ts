@@ -492,9 +492,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
         console.log(`📊 Processing progress: ${processedRows}/${csvData.length} rows`)
       }
       try {
-        // Find barcode/SKU column (using store-specific mapping)
+        // Find barcode column (using store-specific mapping)
         const barcodeValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'barcode')
-        const skuValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'sku')
         const quantityValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'quantity')
 
         // Special debugging for our target barcode
@@ -502,7 +501,6 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           console.log(`🎯 PROCESSING target barcode 4770237043687:`)
           console.log(`   - Row data:`, row)
           console.log(`   - Extracted barcode: "${barcodeValue}"`)
-          console.log(`   - Extracted SKU: "${skuValue}"`)
           console.log(`   - Extracted quantity: "${quantityValue}"`)
           console.log(`   - Quantity parsed: ${parseInt(quantityValue?.toString() || '0')}`)
           console.log(`   - Quantity isNaN: ${isNaN(parseInt(quantityValue?.toString() || '0'))}`)
@@ -551,22 +549,12 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           console.log(`✅ Target barcode PASSED quantity validation: quantity=${quantity}`)
         }
 
-        // Find existing product by barcode or SKU
+        // Find existing product by barcode
         let product = await getProductByBarcode(barcodeValue)
         if (barcodeValue === '4770237043687') {
           console.log(`🔍 Target barcode searching for existing product by barcode: found=${!!product}`)
           if (product) {
             console.log(`   - Found product:`, product)
-          }
-        }
-        
-        if (!product && skuValue && skuValue.trim() !== '') {
-          product = await getProductBySku(skuValue)
-          if (barcodeValue === '4770237043687') {
-            console.log(`🔍 Target barcode searching for existing product by SKU "${skuValue}": found=${!!product}`)
-            if (product) {
-              console.log(`   - Found product by SKU:`, product)
-            }
           }
         }
 
@@ -600,10 +588,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
             console.log(`🆕 Target barcode final product name: "${productName}"`)
           }
           
-          // Generate a unique SKU if none provided
-          const productSku = skuValue && skuValue.trim() !== '' 
-            ? skuValue 
-            : `AUTO-${barcodeValue}-${Date.now()}`
+          // Generate a unique SKU using barcode + timestamp to avoid collisions
+          const productSku = `${barcodeValue}-${Date.now()}`
           
           if (barcodeValue === '4770237043687') {
             console.log(`🆕 Target barcode generated SKU: "${productSku}"`)
@@ -746,7 +732,6 @@ export async function uploadSupplierDelivery(
     for (const row of csvData) {
       try {
         const barcodeValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'barcode')
-        const skuValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'sku')
         const quantityValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'quantity')
         const unitCostValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'price')
 
@@ -773,21 +758,16 @@ export async function uploadSupplierDelivery(
           continue
         }
 
-        // Find existing product by barcode or SKU
+        // Find existing product by barcode
         let product = await getProductByBarcode(barcodeValue)
-        if (!product && skuValue && skuValue.trim() !== '') {
-          product = await getProductBySku(skuValue)
-        }
 
         if (!product) {
           // Create new product if it doesn't exist
           const nameValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'name')
           const categoryValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'category')
           
-          // Generate a unique SKU if none provided
-          const productSku = skuValue && skuValue.trim() !== '' 
-            ? skuValue 
-            : `AUTO-${barcodeValue}-${Date.now()}`
+          // Generate a unique SKU using barcode + timestamp to avoid collisions
+          const productSku = `${barcodeValue}-${Date.now()}`
           
           const newProduct: CreateProductForm = {
             sku: productSku,
