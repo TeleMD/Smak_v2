@@ -657,8 +657,8 @@ export async function syncStoreStockToShopifyDirect(
       
       found++
       
-      // Update inventory
-      const newQuantity = item.quantity
+      // Update inventory - use available quantity (not total quantity)
+      const newQuantity = item.available_quantity
       await updateInventoryLevel(variant.inventory_item_id, shopDemoLocation.id, newQuantity)
       
       successfulUpdates++
@@ -705,8 +705,8 @@ export async function syncStoreStockToShopifyDirect(
         if (bulkVariant) {
           found++
           
-          // Update inventory
-          const newQuantity = item.quantity
+          // Update inventory - use available quantity (not total quantity)
+          const newQuantity = item.available_quantity
           await updateInventoryLevel(bulkVariant.inventory_item_id, shopDemoLocation.id, newQuantity)
           
           successfulUpdates++
