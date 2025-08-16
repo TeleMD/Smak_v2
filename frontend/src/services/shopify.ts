@@ -536,6 +536,21 @@ export async function syncStoreStockToShopifyDirect(
 ): Promise<ShopifyStockSyncResult> {
   console.log(`🚀 DIRECT SYNC: Starting sync with ${inventory.length} products`)
   
+  // CRITICAL DIAGNOSTIC: Check if 4770237043687 is in inventory
+  const target = inventory.find(item => item.product?.barcode === '4770237043687')
+  if (target) {
+    console.log(`🎯 FOUND 4770237043687 in inventory:`)
+    console.log(`   - quantity: ${target.quantity}`)
+    console.log(`   - reserved_quantity: ${target.reserved_quantity}`)
+    console.log(`   - available_quantity: ${target.available_quantity}`)
+    console.log(`   - product_id: ${target.product_id}`)
+    console.log(`   - store_id: ${target.store_id}`)
+  } else {
+    console.log(`❌ CRITICAL: 4770237043687 NOT FOUND in inventory list!`)
+    console.log(`   - Total inventory items: ${inventory.length}`)
+    console.log(`   - Sample barcodes:`, inventory.slice(0, 5).map(i => i.product?.barcode).filter(Boolean))
+  }
+  
   const startTime = Date.now()
   const results: ShopifyPushResult[] = []
   let successfulUpdates = 0
