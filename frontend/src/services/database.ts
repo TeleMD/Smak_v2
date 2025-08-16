@@ -588,8 +588,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
             console.log(`🆕 Target barcode final product name: "${productName}"`)
           }
           
-          // Generate a unique SKU using barcode + timestamp to avoid collisions
-          const productSku = `${barcodeValue}-${Date.now()}`
+          // Generate a truly unique SKU using barcode + timestamp + random number
+          const productSku = `${barcodeValue}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
           
           if (barcodeValue === '4770237043687') {
             console.log(`🆕 Target barcode generated SKU: "${productSku}"`)
@@ -766,8 +766,8 @@ export async function uploadSupplierDelivery(
           const nameValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'name')
           const categoryValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'category')
           
-          // Generate a unique SKU using barcode + timestamp to avoid collisions
-          const productSku = `${barcodeValue}-${Date.now()}`
+          // Generate a truly unique SKU using barcode + timestamp + random number
+          const productSku = `${barcodeValue}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
           
           const newProduct: CreateProductForm = {
             sku: productSku,
