@@ -507,14 +507,20 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           console.log(`   - Row ${processedRows}/${csvData.length}`)
         }
 
-        if (!barcodeValue || quantityValue === null || quantityValue === undefined) {
+        // Skip rows with invalid/empty barcodes (but don't count as errors)
+        if (!barcodeValue || barcodeValue.trim() === '' || barcodeValue.toLowerCase() === 'n1' || barcodeValue.length < 3) {
+          continue // Skip silently - these are likely empty rows or invalid entries
+        }
+        
+        // Skip rows with missing quantity
+        if (quantityValue === null || quantityValue === undefined || quantityValue === '') {
           if (barcodeValue === '4770237043687') {
-            console.log(`❌ Target barcode FAILED validation: barcode="${barcodeValue}", quantity="${quantityValue}"`)
+            console.log(`❌ Target barcode FAILED quantity validation: quantity="${quantityValue}"`)
           }
           results.push({
             barcode: barcodeValue || 'Unknown',
             status: 'error',
-            message: 'Missing barcode or quantity'
+            message: 'Missing quantity'
           })
           errors++
           continue
