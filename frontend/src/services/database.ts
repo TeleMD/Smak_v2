@@ -494,6 +494,7 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
       try {
         // Find barcode/SKU column (using store-specific mapping)
         const barcodeValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'barcode')
+        const skuValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'sku')
         const quantityValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'quantity')
 
         // Special debugging for our target barcode
@@ -501,6 +502,7 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           console.log(`🎯 PROCESSING target barcode 4770237043687:`)
           console.log(`   - Row data:`, row)
           console.log(`   - Extracted barcode: "${barcodeValue}"`)
+          console.log(`   - Extracted SKU: "${skuValue}"`)
           console.log(`   - Extracted quantity: "${quantityValue}"`)
           console.log(`   - Quantity parsed: ${parseInt(quantityValue?.toString() || '0')}`)
           console.log(`   - Quantity isNaN: ${isNaN(parseInt(quantityValue?.toString() || '0'))}`)
@@ -578,8 +580,17 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
             console.log(`🆕 Target barcode final product name: "${productName}"`)
           }
           
+          // Generate a unique SKU if none provided
+          const productSku = skuValue && skuValue.trim() !== '' 
+            ? skuValue 
+            : `AUTO-${barcodeValue}-${Date.now()}`
+          
+          if (barcodeValue === '4770237043687') {
+            console.log(`🆕 Target barcode generated SKU: "${productSku}"`)
+          }
+          
           const newProduct: CreateProductForm = {
-            sku: barcodeValue,
+            sku: productSku,
             barcode: barcodeValue,
             name: productName,
             category: categoryValue || undefined,
@@ -587,11 +598,18 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
             cost_price: priceValue ? parseFloat(priceValue) || undefined : undefined
           }
 
-          product = await createProduct(newProduct)
-          newProducts++
-          
-          if (barcodeValue === '4770237043687') {
-            console.log(`✅ Target barcode product created successfully:`, product)
+          try {
+            product = await createProduct(newProduct)
+            newProducts++
+            
+            if (barcodeValue === '4770237043687') {
+              console.log(`✅ Target barcode product created successfully:`, product)
+            }
+          } catch (createError) {
+            if (barcodeValue === '4770237043687') {
+              console.log(`❌ Target barcode FAILED to create product:`, createError)
+            }
+            throw createError // Re-throw to be caught by the outer catch block
           }
           
           results.push({
@@ -603,7 +621,22 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
         }
 
         // Update inventory for this store (skip movements for current stock uploads)
-        await updateInventoryQuantitySkipMovements(storeId, product.id, quantity)
+        if (barcodeValue === '4770237043687') {
+          console.log(`🔄 Target barcode updating inventory: storeId=${storeId}, productId=${product.id}, quantity=${quantity}`)
+        }
+        
+        try {
+          await updateInventoryQuantitySkipMovements(storeId, product.id, quantity)
+          
+          if (barcodeValue === '4770237043687') {
+            console.log(`✅ Target barcode inventory updated successfully`)
+          }
+        } catch (inventoryError) {
+          if (barcodeValue === '4770237043687') {
+            console.log(`❌ Target barcode FAILED to update inventory:`, inventoryError)
+          }
+          throw inventoryError // Re-throw to be caught by the outer catch block
+        }
         
         if (!results.find(r => r.barcode === barcodeValue && r.status === 'created')) {
           results.push({
@@ -693,6 +726,7 @@ export async function uploadSupplierDelivery(
     for (const row of csvData) {
       try {
         const barcodeValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'barcode')
+        const skuValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'sku')
         const quantityValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'quantity')
         const unitCostValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'price')
 
@@ -730,8 +764,13 @@ export async function uploadSupplierDelivery(
           const nameValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'name')
           const categoryValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'category')
           
+          // Generate a unique SKU if none provided
+          const productSku = skuValue && skuValue.trim() !== '' 
+            ? skuValue 
+            : `AUTO-${barcodeValue}-${Date.now()}`
+          
           const newProduct: CreateProductForm = {
-            sku: barcodeValue,
+            sku: productSku,
             barcode: barcodeValue,
             name: nameValue || `Product ${barcodeValue}`,
             category: categoryValue || undefined,
@@ -851,7 +890,7 @@ async function findColumnValueWithMapping(
   row: any, 
   storeId: string, 
   mappingType: 'current_stock' | 'supplier_delivery',
-  columnType: 'barcode' | 'name' | 'quantity' | 'price' | 'category'
+  columnType: 'barcode' | 'sku' | 'name' | 'quantity' | 'price' | 'category'
 ): Promise<string | null> {
   // Try to get store-specific mapping first
   const storeMapping = await getStoreCsvMapping(storeId, mappingType)
@@ -862,6 +901,9 @@ async function findColumnValueWithMapping(
     switch (columnType) {
       case 'barcode':
         possibleNames = storeMapping.barcode_columns
+        break
+      case 'sku':
+        possibleNames = storeMapping.sku_columns || []
         break
       case 'name':
         possibleNames = storeMapping.name_columns
@@ -882,7 +924,10 @@ async function findColumnValueWithMapping(
   if (possibleNames.length === 0) {
     switch (columnType) {
       case 'barcode':
-        possibleNames = ['barcode', 'sku', 'code', 'product_code', 'Barcode']
+        possibleNames = ['barcode', 'code', 'product_code', 'Barcode']
+        break
+      case 'sku':
+        possibleNames = ['sku', 'SKU', 'product_sku', 'item_sku']
         break
       case 'name':
         possibleNames = ['name', 'product_name', 'title', 'Item name', 'item_name']
