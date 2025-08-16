@@ -476,6 +476,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           console.log(`   - Row data:`, row)
           console.log(`   - Extracted barcode: "${barcodeValue}"`)
           console.log(`   - Extracted quantity: "${quantityValue}"`)
+          console.log(`   - Quantity parsed: ${parseInt(quantityValue?.toString() || '0')}`)
+          console.log(`   - Quantity isNaN: ${isNaN(parseInt(quantityValue?.toString() || '0'))}`)
           console.log(`   - Row ${processedRows}/${csvData.length}`)
         }
 
@@ -494,6 +496,13 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
 
         const quantity = parseInt(quantityValue.toString())
         if (isNaN(quantity) || quantity < 0) {
+          if (barcodeValue === '4770237043687') {
+            console.log(`❌ Target barcode FAILED quantity validation:`)
+            console.log(`   - quantityValue: "${quantityValue}"`)
+            console.log(`   - parsed quantity: ${quantity}`)
+            console.log(`   - isNaN: ${isNaN(quantity)}`)
+            console.log(`   - quantity < 0: ${quantity < 0}`)
+          }
           results.push({
             barcode: barcodeValue,
             status: 'error',
@@ -501,6 +510,11 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           })
           errors++
           continue
+        }
+
+        // Special debugging - successful quantity parsing
+        if (barcodeValue === '4770237043687') {
+          console.log(`✅ Target barcode PASSED quantity validation: quantity=${quantity}`)
         }
 
         // Find existing product by barcode or SKU
@@ -515,10 +529,21 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           const categoryValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'category')
           const priceValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'price')
           
+          if (barcodeValue === '4770237043687') {
+            console.log(`🆕 Target barcode creating new product:`)
+            console.log(`   - nameValue: "${nameValue}"`)
+            console.log(`   - categoryValue: "${categoryValue}"`)
+            console.log(`   - priceValue: "${priceValue}"`)
+          }
+          
           // Fix multiline product names - only keep the first line
           let productName = nameValue || `Product ${barcodeValue}`
           if (typeof productName === 'string') {
             productName = productName.split('\n')[0].trim()
+          }
+          
+          if (barcodeValue === '4770237043687') {
+            console.log(`🆕 Target barcode final product name: "${productName}"`)
           }
           
           const newProduct: CreateProductForm = {
@@ -532,6 +557,10 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
 
           product = await createProduct(newProduct)
           newProducts++
+          
+          if (barcodeValue === '4770237043687') {
+            console.log(`✅ Target barcode product created successfully:`, product)
+          }
           
           results.push({
             barcode: barcodeValue,
