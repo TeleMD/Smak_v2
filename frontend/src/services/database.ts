@@ -414,6 +414,45 @@ export async function processStockReceipt(receiptId: string): Promise<void> {
   if (error) throw error
 }
 
+// Manual function to process pending stock receipts
+export async function processPendingStockReceipts(storeId?: string): Promise<{ processed: number; errors: number }> {
+  let processed = 0
+  let errors = 0
+  
+  try {
+    // Get pending receipts
+    let query = supabase
+      .from('stock_receipts')
+      .select('id')
+      .eq('status', 'pending')
+    
+    if (storeId) {
+      query = query.eq('store_id', storeId)
+    }
+    
+    const { data: pendingReceipts, error } = await query
+    
+    if (error) throw error
+    
+    // Process each receipt
+    for (const receipt of pendingReceipts || []) {
+      try {
+        await processStockReceipt(receipt.id)
+        processed++
+        console.log(`✅ Processed receipt ${receipt.id}`)
+      } catch (error) {
+        errors++
+        console.error(`❌ Failed to process receipt ${receipt.id}:`, error)
+      }
+    }
+    
+    return { processed, errors }
+  } catch (error) {
+    console.error('Error processing pending receipts:', error)
+    throw error
+  }
+}
+
 // =====================================================
 // SALES TRANSACTIONS MANAGEMENT
 // =====================================================
