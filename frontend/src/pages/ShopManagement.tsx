@@ -30,7 +30,16 @@ export default function ShopManagement({ onSelectShop }: ShopManagementProps) {
         storesList.map(async (store) => {
           try {
             const inventory = await getCurrentInventory(store.id)
-            const totalProducts = new Set(inventory.map(item => item.product_id)).size
+            
+            // Debug logging
+            console.log(`🔍 DEBUGGING STORE ${store.name} INVENTORY:`)
+            console.log('- Total inventory records:', inventory.length)
+            console.log('- First few product_ids:', inventory.slice(0, 5).map(item => item.product_id))
+            
+            const uniqueProductIds = new Set(inventory.map(item => item.product_id))
+            console.log('- Unique product count:', uniqueProductIds.size)
+            
+            const totalProducts = uniqueProductIds.size
             const totalValue = inventory.reduce((sum, item) => {
               return sum + (item.available_quantity * (item.product?.unit_price || 0))
             }, 0)
