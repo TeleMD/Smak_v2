@@ -116,7 +116,7 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
   }
 
   const stats = {
-    totalProducts: inventory.length,
+    totalProducts: new Set(inventory.map(item => item.product_id)).size,
     totalValue: inventory.reduce((sum, item) => sum + (item.available_quantity * (item.product?.unit_price || 0)), 0),
     lowStockCount: inventory.filter(item => 
       item.product?.min_stock_level && item.available_quantity <= item.product.min_stock_level
