@@ -25,7 +25,6 @@ export default function CSVUploadModal({
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<any>(null)
-  const [supplierName, setSupplierName] = useState('')
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
   const [isExportingNewProducts, setIsExportingNewProducts] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -67,7 +66,6 @@ export default function CSVUploadModal({
   const resetModal = () => {
     setFile(null)
     setUploadResult(null)
-    setSupplierName('')
     setSelectedSupplier(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
