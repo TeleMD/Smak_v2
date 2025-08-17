@@ -556,14 +556,20 @@ export async function syncStoreStockToShopifyDirect(
   let successfulUpdates = 0
   let failedUpdates = 0
   
-  const locations = await getShopifyLocations()
-  const shopDemoLocation = locations.find(l => l.name.toLowerCase() === 'shop demo')
-  
-  if (!shopDemoLocation) {
-    throw new Error('Shop Demo location not found')
+  // Find the Shopify location that matches the store name
+  let shopifyLocation
+  try {
+    shopifyLocation = await findShopifyLocationByName(storeName)
+  } catch (error) {
+    console.error('Error finding Shopify location:', error)
+    throw new Error(`Error finding Shopify location: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
   
-  console.log(`📍 Target location: ${shopDemoLocation.name} (ID: ${shopDemoLocation.id})`)
+  if (!shopifyLocation) {
+    throw new Error(`No Shopify location found with name "${storeName}"`)
+  }
+  
+  console.log(`📍 Target location: ${shopifyLocation.name} (ID: ${shopifyLocation.id})`)
   
   // EXPANDED: Known product mappings from CSV for fast direct access
   const knownProducts: Record<string, string> = {
@@ -687,7 +693,7 @@ export async function syncStoreStockToShopifyDirect(
         console.log(`   - Full item:`, JSON.stringify(item, null, 2))
       }
       
-      await updateInventoryLevel(variant.inventory_item_id, shopDemoLocation.id, newQuantity)
+      await updateInventoryLevel(variant.inventory_item_id, shopifyLocation.id, newQuantity)
       
       successfulUpdates++
       results.push({
@@ -746,7 +752,7 @@ export async function syncStoreStockToShopifyDirect(
             console.log(`   - Found via bulk search`)
           }
           
-          await updateInventoryLevel(bulkVariant.inventory_item_id, shopDemoLocation.id, newQuantity)
+          await updateInventoryLevel(bulkVariant.inventory_item_id, shopifyLocation.id, newQuantity)
           
           successfulUpdates++
           results.push({
@@ -791,6 +797,8 @@ export async function syncStoreStockToShopifyDirect(
   return {
     store_id: storeId,
     store_name: storeName,
+    shopify_location_name: shopifyLocation.name,
+    shopify_location_id: shopifyLocation.id,
     total_products: validInventory.length,
     successful_updates: successfulUpdates,
     failed_updates: failedUpdates,
