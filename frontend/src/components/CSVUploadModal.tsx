@@ -11,12 +11,7 @@ interface CSVUploadModalProps {
   onUploadComplete: () => void
 }
 
-interface CSVPreview {
-  headers: string[]
-  rows: any[][]
-  isValid: boolean
-  errorMessage?: string
-}
+
 
 export default function CSVUploadModal({ 
   isOpen, 
@@ -26,73 +21,18 @@ export default function CSVUploadModal({
   onUploadComplete 
 }: CSVUploadModalProps) {
   const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<CSVPreview | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<any>(null)
   const [supplierName, setSupplierName] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileSelect = async (selectedFile: File) => {
+  const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile)
-    setPreview(null)
     setUploadResult(null)
-
-    try {
-      const csvData = await parseCSV(selectedFile)
-      
-      if (csvData.length === 0) {
-        setPreview({
-          headers: [],
-          rows: [],
-          isValid: false,
-          errorMessage: 'CSV file is empty'
-        })
-        return
-      }
-
-      // Extract headers and validate required columns
-      const headers = Object.keys(csvData[0])
-      const hasBarcode = headers.some(h => 
-        h.toLowerCase().includes('barcode') || 
-        h.toLowerCase().includes('sku') ||
-        h.toLowerCase().includes('code')
-      )
-      const hasQuantity = headers.some(h => 
-        h.toLowerCase().includes('quantity') || 
-        h.toLowerCase().includes('qty') ||
-        h.toLowerCase().includes('stock')
-      )
-
-      if (!hasBarcode || !hasQuantity) {
-        setPreview({
-          headers,
-          rows: [],
-          isValid: false,
-          errorMessage: 'CSV must contain barcode and quantity columns'
-        })
-        return
-      }
-
-      // Show preview of first 5 rows
-      const previewRows = csvData.slice(0, 5).map(row => headers.map(h => row[h]))
-
-      setPreview({
-        headers,
-        rows: previewRows,
-        isValid: true
-      })
-    } catch (error) {
-      setPreview({
-        headers: [],
-        rows: [],
-        isValid: false,
-        errorMessage: `Error parsing CSV: ${error instanceof Error ? error.message : 'Unknown error'}`
-      })
-    }
   }
 
   const handleUpload = async () => {
-    if (!file || !preview?.isValid) return
+    if (!file) return
 
     setUploading(true)
     try {
@@ -122,7 +62,6 @@ export default function CSVUploadModal({
 
   const resetModal = () => {
     setFile(null)
-    setPreview(null)
     setUploadResult(null)
     setSupplierName('')
     if (fileInputRef.current) {
@@ -223,59 +162,13 @@ export default function CSVUploadModal({
                   </div>
                 </div>
 
-                {/* File Preview */}
+                {/* Selected File Display */}
                 {file && (
                   <div className="mb-6">
-                    <h4 className="text-sm font-medium text-gray-900 mb-2">
-                      Selected File: {file.name}
-                    </h4>
-                    
-                    {preview && (
-                      <div className="border border-gray-200 rounded-lg">
-                        {preview.isValid ? (
-                          <div>
-                            <div className="flex items-center p-3 bg-green-50 border-b border-gray-200">
-                              <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                              <span className="text-sm text-green-700">CSV format is valid</span>
-                            </div>
-                            <div className="p-3">
-                              <h5 className="text-xs font-medium text-gray-700 mb-2">Preview (first 5 rows):</h5>
-                              <div className="overflow-x-auto">
-                                <table className="min-w-full text-xs">
-                                  <thead>
-                                    <tr className="bg-gray-50">
-                                      {preview.headers.map((header, i) => (
-                                        <th key={i} className="px-2 py-1 text-left font-medium text-gray-700 border-b">
-                                          {header}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {preview.rows.map((row, i) => (
-                                      <tr key={i} className="border-b border-gray-100">
-                                        {row.map((cell, j) => (
-                                          <td key={j} className="px-2 py-1 text-gray-600">
-                                            {cell}
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="p-3 bg-red-50">
-                            <div className="flex items-center">
-                              <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-                              <span className="text-sm text-red-700">{preview.errorMessage}</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
+                      <span className="text-sm text-green-700">Selected File: {file.name}</span>
+                    </div>
                   </div>
                 )}
               </>
@@ -327,7 +220,7 @@ export default function CSVUploadModal({
               <>
                 <button
                   onClick={handleUpload}
-                  disabled={!preview?.isValid || uploading || (uploadType === 'supplier_delivery' && !supplierName.trim())}
+                  disabled={!file || uploading || (uploadType === 'supplier_delivery' && !supplierName.trim())}
                   className="w-full inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading ? (

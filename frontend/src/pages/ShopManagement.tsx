@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Store, Package, BarChart3, ChevronRight, Plus, Search, Share2 } from 'lucide-react'
+import { Store, Package, BarChart3, ChevronRight, Plus, Search } from 'lucide-react'
 import { Store as StoreType } from '../types'
-import { getStores, getCurrentInventory, syncStoreToShopify } from '../services/database'
+import { getStores, getCurrentInventory } from '../services/database'
 
 interface ShopManagementProps {
   onSelectShop: (shopId: string) => void
@@ -12,7 +12,7 @@ export default function ShopManagement({ onSelectShop }: ShopManagementProps) {
   const [storeStats, setStoreStats] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [syncingStores, setSyncingStores] = useState<Set<string>>(new Set())
+
 
   useEffect(() => {
     loadStoresData()
@@ -70,28 +70,7 @@ export default function ShopManagement({ onSelectShop }: ShopManagementProps) {
     (store.address && store.address.toLowerCase().includes(searchTerm.toLowerCase()))
   )
 
-  const handleSyncToShopify = async (store: StoreType, event: React.MouseEvent) => {
-    event.stopPropagation() // Prevent shop selection when clicking sync button
-    
-    setSyncingStores(prev => new Set(prev).add(store.id))
-    
-    try {
-      const result = await syncStoreToShopify(store.id)
-      console.log('Sync completed for', store.name, ':', result)
-      
-      // Show a simple success message
-      alert(`Sync completed for ${store.name}: ${result.successful_updates} products updated, ${result.failed_updates} failed, ${result.skipped_products} skipped`)
-    } catch (error) {
-      console.error('Sync failed for', store.name, ':', error)
-      alert(`Sync failed for ${store.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-      setSyncingStores(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(store.id)
-        return newSet
-      })
-    }
-  }
+
 
   if (loading) {
     return (
@@ -215,23 +194,7 @@ export default function ShopManagement({ onSelectShop }: ShopManagementProps) {
                         )}
                       </div>
                       
-                      <button
-                        onClick={(e) => handleSyncToShopify(store, e)}
-                        disabled={syncingStores.has(store.id) || stats.totalProducts === 0}
-                        className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded ${
-                          syncingStores.has(store.id) || stats.totalProducts === 0
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-green-100 text-green-700 hover:bg-green-200'
-                        }`}
-                        title={stats.totalProducts === 0 ? 'No products to sync' : 'Sync inventory to Shopify'}
-                      >
-                        {syncingStores.has(store.id) ? (
-                          <div className="animate-spin rounded-full h-3 w-3 border-b border-green-700 mr-1"></div>
-                        ) : (
-                          <Share2 className="h-3 w-3 mr-1" />
-                        )}
-                        {syncingStores.has(store.id) ? 'Syncing...' : 'Sync'}
-                      </button>
+
                     </div>
                   </div>
                 </div>
