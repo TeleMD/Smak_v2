@@ -164,6 +164,43 @@ export function parseSalesCSV(csvText: string): { data: any[], errors: string[] 
   return parseProductCSV(csvText)
 }
 
+// RFC 4180-compliant CSV parser to handle quoted fields with commas properly
+function parseCSVLine(line: string, delimiter: string = ','): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+  let i = 0
+  
+  while (i < line.length) {
+    const char = line[i]
+    
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        // Handle escaped quotes (double quotes)
+        current += '"'
+        i += 2
+      } else {
+        // Toggle quote state
+        inQuotes = !inQuotes
+        i++
+      }
+    } else if (char === delimiter && !inQuotes) {
+      // Field delimiter outside quotes
+      result.push(current.trim())
+      current = ''
+      i++
+    } else {
+      // Regular character
+      current += char
+      i++
+    }
+  }
+  
+  // Add the last field
+  result.push(current.trim())
+  return result
+}
+
 // Enhanced CSV parsing for the new upload functionality
 export function parseCSV(file: File): Promise<any[]> {
   return new Promise((resolve, reject) => {
@@ -185,25 +222,53 @@ export function parseCSV(file: File): Promise<any[]> {
         const semicolonCount = (firstLine.match(/;/g) || []).length
         const delimiter = semicolonCount > commaCount ? ';' : ','
 
-        // Parse headers
-        const headers = lines[0].split(delimiter)
-          .map(h => h.trim().replace(/^"/, '').replace(/"$/, ''))
+        // Parse headers using proper CSV parsing
+        const headers = parseCSVLine(lines[0], delimiter)
+
+        console.log(`📊 CSV PARSING: Detected ${headers.length} columns with delimiter '${delimiter}'`)
+        console.log(`📋 Headers:`, headers.slice(0, 5), '...')
 
         // Parse data rows
         const data: any[] = []
+        let parseErrors = 0
+        
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim()
           if (!line) continue // Skip empty lines
           
-          const values = line.split(delimiter)
-            .map(v => v.trim().replace(/^"/, '').replace(/"$/, ''))
-          
-          const rowData: any = {}
-          headers.forEach((header, index) => {
-            rowData[header] = values[index] || ''
-          })
-          
-          data.push(rowData)
+          try {
+            const values = parseCSVLine(line, delimiter)
+            
+            // Validate field count
+            if (values.length !== headers.length) {
+              console.warn(`⚠️ Row ${i + 1}: Expected ${headers.length} fields, got ${values.length}`)
+              parseErrors++
+              
+              // Adjust field count - pad with empty strings or truncate
+              while (values.length < headers.length) {
+                values.push('')
+              }
+              if (values.length > headers.length) {
+                values.splice(headers.length)
+              }
+            }
+            
+            const rowData: any = {}
+            headers.forEach((header, index) => {
+              rowData[header] = values[index] || ''
+            })
+            
+            data.push(rowData)
+          } catch (error) {
+            console.error(`❌ Error parsing row ${i + 1}:`, error)
+            parseErrors++
+          }
+        }
+
+        console.log(`✅ CSV PARSING COMPLETE: ${data.length} rows parsed, ${parseErrors} errors`)
+        
+        if (parseErrors > 0) {
+          console.warn(`⚠️ ${parseErrors} rows had parsing issues but were corrected`)
         }
 
         resolve(data)

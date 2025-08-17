@@ -568,8 +568,19 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
         }
 
         // Skip rows with invalid/empty barcodes (but don't count as errors)
-        if (!barcodeValue || barcodeValue.trim() === '' || barcodeValue.toLowerCase() === 'n1' || barcodeValue.length < 3) {
-          if (processedRows <= 5) {
+        // Improved validation to catch more invalid barcode cases
+        const isInvalidBarcode = !barcodeValue || 
+          barcodeValue.trim() === '' || 
+          barcodeValue.toLowerCase() === 'n1' || 
+          barcodeValue.length < 3 ||
+          barcodeValue.toLowerCase() === 'yes' ||
+          barcodeValue.toLowerCase() === 'no' ||
+          barcodeValue.toLowerCase() === 'nan' ||
+          barcodeValue.toLowerCase().includes('each.each') ||
+          /^[0.]+$/.test(barcodeValue) // All zeros or dots
+          
+        if (isInvalidBarcode) {
+          if (processedRows <= 5 || (processedRows % 200 === 0)) {
             console.log(`⏭️ SKIPPING ROW ${processedRows}: invalid barcode="${barcodeValue}"`)
           }
           continue // Skip silently - these are likely empty rows or invalid entries
