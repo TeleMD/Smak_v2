@@ -46,11 +46,10 @@ export default function CSVUploadModal({
       if (uploadType === 'current_stock') {
         result = await uploadCurrentStock(shopId, csvData)
       } else {
-        const finalSupplierName = selectedSupplier?.name || supplierName.trim()
-        if (!finalSupplierName) {
-          throw new Error('Supplier selection or name is required for delivery uploads')
+        if (!selectedSupplier) {
+          throw new Error('Please select a supplier for delivery uploads')
         }
-        result = await uploadSupplierDelivery(shopId, csvData, finalSupplierName, selectedSupplier?.id)
+        result = await uploadSupplierDelivery(shopId, csvData, selectedSupplier.name, selectedSupplier.id)
       }
 
       setUploadResult(result)
@@ -159,47 +158,21 @@ export default function CSVUploadModal({
 
                 {/* Supplier Selection for Delivery */}
                 {uploadType === 'supplier_delivery' && (
-                  <div className="mb-4 space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Select Supplier *
-                      </label>
-                      <SupplierSelector
-                        selectedSupplierId={selectedSupplier?.id}
-                        onSupplierSelect={setSelectedSupplier}
-                        allowCreate={true}
-                        className="w-full"
-                      />
-                      {selectedSupplier && (
-                        <p className="mt-1 text-xs text-gray-500">
-                          Using column mappings: {selectedSupplier.barcode_columns.join(', ')} for barcodes
-                        </p>
-                      )}
-                    </div>
-                    
-                    <div className="text-sm text-gray-600 text-center">
-                      <span>— OR —</span>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Enter Supplier Name Manually
-                      </label>
-                      <input
-                        type="text"
-                        value={supplierName}
-                        onChange={(e) => setSupplierName(e.target.value)}
-                        placeholder="Enter new supplier name"
-                        className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-                        disabled={!!selectedSupplier}
-                      />
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Supplier *
+                    </label>
+                    <SupplierSelector
+                      selectedSupplierId={selectedSupplier?.id}
+                      onSupplierSelect={setSelectedSupplier}
+                      allowCreate={true}
+                      className="w-full"
+                    />
+                    {selectedSupplier && (
                       <p className="mt-1 text-xs text-gray-500">
-                        {selectedSupplier 
-                          ? 'Clear supplier selection above to enter manually' 
-                          : 'Will create new supplier with default column mappings'
-                        }
+                        Using column mappings: {selectedSupplier.barcode_columns.join(', ')} for barcodes
                       </p>
-                    </div>
+                    )}
                   </div>
                 )}
 
@@ -318,7 +291,7 @@ export default function CSVUploadModal({
               <>
                 <button
                   onClick={handleUpload}
-                  disabled={!file || uploading || (uploadType === 'supplier_delivery' && !selectedSupplier && !supplierName.trim())}
+                  disabled={!file || uploading || (uploadType === 'supplier_delivery' && !selectedSupplier)}
                   className="w-full inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading ? (

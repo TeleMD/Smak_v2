@@ -6,7 +6,7 @@ import {
 import { Store as StoreType, CurrentInventory, StockReceipt, InventoryMovement, ShopifyStockSyncResult } from '../types'
 import { 
   getStore, getCurrentInventory, getStockReceipts, 
-  getInventoryMovements, syncStoreToShopify, processPendingStockReceipts
+  getInventoryMovements, syncStoreToShopify
 } from '../services/database'
 import CSVUploadModal from '../components/CSVUploadModal'
 
@@ -27,7 +27,6 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<ShopifyStockSyncResult | null>(null)
   const [showSyncResult, setShowSyncResult] = useState(false)
-  const [isProcessingReceipts, setIsProcessingReceipts] = useState(false)
 
   useEffect(() => {
     loadShopData()
@@ -84,28 +83,7 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
     }
   }
 
-  const handleProcessPendingReceipts = async () => {
-    if (!store) return
-    
-    setIsProcessingReceipts(true)
-    
-    try {
-      console.log('Processing pending receipts for store:', store.name)
-      const result = await processPendingStockReceipts(store.id)
-      
-      if (result.processed > 0) {
-        alert(`Successfully processed ${result.processed} pending receipt(s)${result.errors > 0 ? ` (${result.errors} failed)` : ''}`)
-        loadShopData() // Reload data to show updated inventory
-      } else {
-        alert('No pending receipts to process')
-      }
-    } catch (error) {
-      console.error('Processing failed:', error)
-      alert(`Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-      setIsProcessingReceipts(false)
-    }
-  }
+
 
   if (loading) {
     return (
@@ -201,24 +179,6 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
                     <Share2 className="h-4 w-4 mr-2" />
                   )}
                   {isSyncing ? 'Syncing...' : '🚀 Direct Sync to Shopify'}
-                </button>
-
-                {/* Process Pending Receipts Button */}
-                <button
-                  onClick={handleProcessPendingReceipts}
-                  disabled={isProcessingReceipts}
-                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
-                    isProcessingReceipts 
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-orange-600 hover:bg-orange-700'
-                  }`}
-                >
-                  {isProcessingReceipts ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  ) : (
-                    <Truck className="h-4 w-4 mr-2" />
-                  )}
-                  {isProcessingReceipts ? 'Processing...' : 'Process Pending Receipts'}
                 </button>
 
                 <button
