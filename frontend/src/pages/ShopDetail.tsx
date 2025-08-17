@@ -115,18 +115,8 @@ export default function ShopDetail({ shopId, onBack }: ShopDetailProps) {
     )
   }
 
-  // Debug logging to understand the data structure
-  console.log('🔍 DEBUGGING INVENTORY DATA:')
-  console.log('- Total inventory records:', inventory.length)
-  console.log('- First few product_ids:', inventory.slice(0, 5).map(item => item.product_id))
-  console.log('- Unique product_ids sample:', [...new Set(inventory.map(item => item.product_id))].slice(0, 10))
-  
-  const uniqueProductIds = new Set(inventory.map(item => item.product_id))
-  console.log('- Unique product count:', uniqueProductIds.size)
-  console.log('- Are all product_ids the same?', uniqueProductIds.size === 1)
-
   const stats = {
-    totalProducts: uniqueProductIds.size,
+    totalProducts: new Set(inventory.map(item => item.product_id)).size,
     totalValue: inventory.reduce((sum, item) => sum + (item.available_quantity * (item.product?.unit_price || 0)), 0),
     lowStockCount: inventory.filter(item => 
       item.product?.min_stock_level && item.available_quantity <= item.product.min_stock_level
