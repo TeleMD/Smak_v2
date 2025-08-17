@@ -3,7 +3,8 @@ import {
   Store, Product, CurrentInventory, StockReceipt,
   SalesTransaction, InventoryMovement, SyncJob,
   CreateProductForm, CreateStoreForm, CreateReceiptForm, 
-  InventoryAdjustmentForm, DashboardStats, ShopifyStockSyncResult
+  InventoryAdjustmentForm, DashboardStats, ShopifyStockSyncResult,
+  Supplier, NewProductLog
 } from '../types'
 import { syncStoreStockToShopifyDirect } from './shopify'
 
@@ -63,6 +64,108 @@ export async function deleteStore(id: string): Promise<void> {
     .eq('id', id)
 
   if (error) throw error
+}
+
+// =====================================================
+// SUPPLIER MANAGEMENT
+// =====================================================
+
+export async function getSuppliers(): Promise<Supplier[]> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('*')
+    .eq('is_active', true)
+    .order('name')
+
+  if (error) throw error
+  return data || []
+}
+
+export async function getSupplier(id: string): Promise<Supplier | null> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error && error.code !== 'PGRST116') throw error
+  return data
+}
+
+export async function getSupplierByName(name: string): Promise<Supplier | null> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('*')
+    .eq('name', name)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
+export async function createSupplier(supplier: Omit<Supplier, 'id' | 'created_at' | 'updated_at'>): Promise<Supplier> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .insert([supplier])
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function updateSupplier(id: string, updates: Partial<Supplier>): Promise<Supplier> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+// =====================================================
+// NEW PRODUCTS LOG MANAGEMENT
+// =====================================================
+
+export async function getNewProductsLog(
+  supplierId?: string, 
+  receiptId?: string,
+  isExported?: boolean
+): Promise<NewProductLog[]> {
+  let query = supabase
+    .from('new_products_log')
+    .select(`
+      *,
+      product:products(*),
+      supplier:suppliers(*)
+    `)
+
+  if (supplierId) query = query.eq('supplier_id', supplierId)
+  if (receiptId) query = query.eq('receipt_id', receiptId)
+  if (isExported !== undefined) query = query.eq('is_exported', isExported)
+
+  const { data, error } = await query.order('detected_at', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
+export async function exportNewProducts(
+  supplierId?: string, 
+  receiptId?: string
+): Promise<{ barcode: string; name: string; supplier_name: string; detected_at: string }[]> {
+  const { data, error } = await supabase.rpc('export_new_products_csv', {
+    p_supplier_id: supplierId,
+    p_receipt_id: receiptId,
+    p_limit: 1000
+  })
+
+  if (error) throw error
+  return data || []
 }
 
 // =====================================================
@@ -237,6 +340,7 @@ export async function getStockReceipts(storeId?: string): Promise<StockReceipt[]
     .select(`
       *,
       store:stores(*),
+      supplier:suppliers(*),
       items:stock_receipt_items(
         *,
         product:products(*)
@@ -259,6 +363,7 @@ export async function getStockReceipt(id: string): Promise<StockReceipt | null> 
     .select(`
       *,
       store:stores(*),
+      supplier:suppliers(*),
       items:stock_receipt_items(
         *,
         product:products(*)
@@ -277,6 +382,7 @@ export async function createStockReceipt(receipt: CreateReceiptForm): Promise<St
     .insert([{
       store_id: receipt.store_id,
       supplier_name: receipt.supplier_name,
+      supplier_id: receipt.supplier_id,
       receipt_date: receipt.receipt_date,
       expected_delivery_date: receipt.expected_delivery_date,
       notes: receipt.notes,
@@ -798,7 +904,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
 export async function uploadSupplierDelivery(
   storeId: string, 
   csvData: any[], 
-  supplierName: string
+  supplierName: string,
+  supplierId?: string
 ): Promise<CSVProcessingResult> {
   try {
     const results: CSVProcessingResult['details'] = []
@@ -806,10 +913,33 @@ export async function uploadSupplierDelivery(
     let errors = 0
     let newProducts = 0
 
+    // Get or create supplier
+    let supplier: Supplier | null = null
+    if (supplierId) {
+      supplier = await getSupplier(supplierId)
+    } else {
+      supplier = await getSupplierByName(supplierName)
+    }
+
+    if (!supplier) {
+      // Create new supplier with default column mappings
+      supplier = await createSupplier({
+        name: supplierName,
+        code: supplierName.toUpperCase().replace(/\s+/g, '_'),
+        barcode_columns: ['barcode', 'sku', 'code', 'EANNummer'],
+        name_columns: ['name', 'product_name', 'title', 'Bezeichnung1'],
+        quantity_columns: ['quantity', 'qty', 'stock', 'Menge'],
+        price_columns: ['price', 'unit_price', 'cost', 'Einzelpreis'],
+        category_columns: ['category', 'type', 'group'],
+        is_active: true
+      })
+    }
+
     // Create stock receipt header
     const receiptData: CreateReceiptForm = {
       store_id: storeId,
       supplier_name: supplierName,
+      supplier_id: supplier.id,
       receipt_date: new Date().toISOString().split('T')[0],
       notes: `Uploaded from CSV on ${new Date().toLocaleString()}`,
       items: []
@@ -823,17 +953,10 @@ export async function uploadSupplierDelivery(
         let quantityValue: string | null = null
         let unitCostValue: string | null = null
         
-        try {
-          barcodeValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'barcode')
-          quantityValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'quantity')
-          unitCostValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'price')
-        } catch (mappingError) {
-          // Fallback to direct column search if mapping fails
-          console.warn(`Supplier delivery column mapping failed, using fallback:`, mappingError)
-          barcodeValue = findColumnValue(row, ['Barcode', 'barcode', 'code', 'SKU'])
-          quantityValue = findColumnValue(row, ['Quantity', 'quantity', 'qty', 'stock'])
-          unitCostValue = findColumnValue(row, ['price', 'unit_price', 'cost', 'unit_cost'])
-        }
+        // Use supplier-specific column mappings
+        barcodeValue = findColumnValue(row, supplier.barcode_columns)
+        quantityValue = findColumnValue(row, supplier.quantity_columns)
+        unitCostValue = findColumnValue(row, supplier.price_columns || [])
 
         if (!barcodeValue || quantityValue === null || quantityValue === undefined) {
           results.push({
@@ -863,8 +986,8 @@ export async function uploadSupplierDelivery(
 
         if (!product) {
           // Create new product if it doesn't exist
-          const nameValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'name')
-          const categoryValue = await findColumnValueWithMapping(row, storeId, 'supplier_delivery', 'category')
+          const nameValue = findColumnValue(row, supplier.name_columns)
+          const categoryValue = findColumnValue(row, supplier.category_columns || [])
           
           // Generate a truly unique SKU using barcode + timestamp + random number
           const productSku = `${barcodeValue}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -926,6 +1049,23 @@ export async function uploadSupplierDelivery(
     if (receiptItems.length > 0) {
       receiptData.items = receiptItems
       const receipt = await createStockReceipt(receiptData)
+      
+      // Log new products for tracking and export
+      const newProductResults = results.filter(r => r.status === 'created')
+      for (const newProductResult of newProductResults) {
+        const product = await getProductByBarcode(newProductResult.barcode)
+        if (product) {
+          await supabase
+            .from('new_products_log')
+            .insert({
+              product_id: product.id,
+              supplier_id: supplier.id,
+              receipt_id: receipt.id,
+              barcode: product.barcode,
+              name: product.name
+            })
+        }
+      }
       
       // Process the receipt to update inventory
       await processStockReceipt(receipt.id)

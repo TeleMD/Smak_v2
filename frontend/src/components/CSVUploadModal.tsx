@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
-import { X, Upload, FileText, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Download } from 'lucide-react'
 import { parseCSV } from '../utils/csvUtils'
-import { uploadCurrentStock, uploadSupplierDelivery } from '../services/database'
+import { uploadCurrentStock, uploadSupplierDelivery, exportNewProducts } from '../services/database'
+import { Supplier } from '../types'
+import SupplierSelector from './SupplierSelector'
 
 interface CSVUploadModalProps {
   isOpen: boolean
@@ -24,6 +26,8 @@ export default function CSVUploadModal({
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<any>(null)
   const [supplierName, setSupplierName] = useState('')
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
+  const [isExportingNewProducts, setIsExportingNewProducts] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (selectedFile: File) => {
@@ -42,10 +46,11 @@ export default function CSVUploadModal({
       if (uploadType === 'current_stock') {
         result = await uploadCurrentStock(shopId, csvData)
       } else {
-        if (!supplierName.trim()) {
-          throw new Error('Supplier name is required for delivery uploads')
+        const finalSupplierName = selectedSupplier?.name || supplierName.trim()
+        if (!finalSupplierName) {
+          throw new Error('Supplier selection or name is required for delivery uploads')
         }
-        result = await uploadSupplierDelivery(shopId, csvData, supplierName.trim())
+        result = await uploadSupplierDelivery(shopId, csvData, finalSupplierName, selectedSupplier?.id)
       }
 
       setUploadResult(result)
@@ -64,8 +69,46 @@ export default function CSVUploadModal({
     setFile(null)
     setUploadResult(null)
     setSupplierName('')
+    setSelectedSupplier(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
+    }
+  }
+
+  const handleExportNewProducts = async () => {
+    try {
+      setIsExportingNewProducts(true)
+      const newProducts = await exportNewProducts(selectedSupplier?.id)
+      
+      if (newProducts.length === 0) {
+        alert('No new products to export.')
+        return
+      }
+
+      // Create CSV content
+      const csvHeader = 'Barcode,Product Name,Supplier,Detected At\n'
+      const csvRows = newProducts.map(p => 
+        `"${p.barcode}","${p.name}","${p.supplier_name}","${p.detected_at}"`
+      ).join('\n')
+      const csvContent = csvHeader + csvRows
+
+      // Download CSV file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      link.setAttribute('href', url)
+      link.setAttribute('download', `new-products-${selectedSupplier?.name || 'all'}-${new Date().toISOString().split('T')[0]}.csv`)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      alert(`Exported ${newProducts.length} new products to CSV file.`)
+    } catch (error) {
+      console.error('Error exporting new products:', error)
+      alert('Failed to export new products. Please try again.')
+    } finally {
+      setIsExportingNewProducts(false)
     }
   }
 
@@ -114,20 +157,49 @@ export default function CSVUploadModal({
                   </div>
                 </div>
 
-                {/* Supplier Name for Delivery */}
+                {/* Supplier Selection for Delivery */}
                 {uploadType === 'supplier_delivery' && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Supplier Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={supplierName}
-                      onChange={(e) => setSupplierName(e.target.value)}
-                      placeholder="Enter supplier name"
-                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    />
+                  <div className="mb-4 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Supplier *
+                      </label>
+                      <SupplierSelector
+                        selectedSupplierId={selectedSupplier?.id}
+                        onSupplierSelect={setSelectedSupplier}
+                        allowCreate={true}
+                        className="w-full"
+                      />
+                      {selectedSupplier && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Using column mappings: {selectedSupplier.barcode_columns.join(', ')} for barcodes
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="text-sm text-gray-600 text-center">
+                      <span>— OR —</span>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Enter Supplier Name Manually
+                      </label>
+                      <input
+                        type="text"
+                        value={supplierName}
+                        onChange={(e) => setSupplierName(e.target.value)}
+                        placeholder="Enter new supplier name"
+                        className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                        disabled={!!selectedSupplier}
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        {selectedSupplier 
+                          ? 'Clear supplier selection above to enter manually' 
+                          : 'Will create new supplier with default column mappings'
+                        }
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -193,6 +265,32 @@ export default function CSVUploadModal({
                         )}
                       </div>
                     )}
+                    
+                    {/* Export New Products Button */}
+                    {uploadType === 'supplier_delivery' && uploadResult.summary?.newProducts > 0 && (
+                      <div className="mt-4 pt-4 border-t border-green-200">
+                        <button
+                          onClick={handleExportNewProducts}
+                          disabled={isExportingNewProducts}
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-green-800 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isExportingNewProducts ? (
+                            <>
+                              <Loader className="h-4 w-4 mr-2 animate-spin" />
+                              Exporting...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="h-4 w-4 mr-2" />
+                              Export New Products to CSV
+                            </>
+                          )}
+                        </button>
+                        <p className="mt-2 text-xs text-green-600">
+                          Download a CSV file containing all newly added products for review
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="p-4 bg-red-50 rounded-lg">
@@ -220,7 +318,7 @@ export default function CSVUploadModal({
               <>
                 <button
                   onClick={handleUpload}
-                  disabled={!file || uploading || (uploadType === 'supplier_delivery' && !supplierName.trim())}
+                  disabled={!file || uploading || (uploadType === 'supplier_delivery' && !selectedSupplier && !supplierName.trim())}
                   className="w-full inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading ? (

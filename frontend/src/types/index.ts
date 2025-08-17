@@ -68,6 +68,7 @@ export interface StockReceipt {
   processed_at?: string;
   // Joined data
   store?: Store;
+  supplier?: Supplier;
   items?: StockReceiptItem[];
 }
 
@@ -195,14 +196,40 @@ export interface Shop {
   updated_at: string;
 }
 
+// Enhanced Supplier type with column mappings
 export interface Supplier {
   id: string;
   name: string;
-  description?: string;
-  contact_info?: string;
+  code?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  address?: string;
+  notes?: string;
   is_active: boolean;
+  // Column mappings for CSV processing
+  barcode_columns: string[];
+  name_columns: string[];
+  quantity_columns: string[];
+  price_columns?: string[];
+  category_columns?: string[];
   created_at: string;
   updated_at: string;
+}
+
+// New Products Log for tracking newly added products
+export interface NewProductLog {
+  id: string;
+  product_id: string;
+  supplier_id?: string;
+  receipt_id?: string;
+  barcode: string;
+  name: string;
+  detected_at: string;
+  exported_at?: string;
+  is_exported: boolean;
+  // Joined data
+  product?: Product;
+  supplier?: Supplier;
 }
 
 export interface CSVMapping {
@@ -547,6 +574,7 @@ export interface CreateStoreForm {
 export interface CreateReceiptForm {
   store_id: string;
   supplier_name: string;
+  supplier_id?: string;
   receipt_date: string;
   expected_delivery_date?: string;
   notes?: string;
