@@ -547,8 +547,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
         } catch (mappingError) {
           // Fallback to direct column search if mapping fails
           console.warn(`Column mapping failed, using fallback:`, mappingError)
-          barcodeValue = findColumnValue(row, ['barcode', 'Barcode', 'SKU', 'code'])
-          quantityValue = findColumnValue(row, ['quantity', 'Quantity', 'qty', 'stock'])
+          barcodeValue = findColumnValue(row, ['Barcode', 'barcode', 'code', 'SKU'])
+          quantityValue = findColumnValue(row, ['Quantity', 'quantity', 'qty', 'stock'])
         }
 
         // Debug EVERY row to see where target barcode is lost
@@ -640,9 +640,9 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
             priceValue = await findColumnValueWithMapping(row, storeId, 'current_stock', 'price')
           } catch (mappingError) {
             // Fallback to direct column search
-            nameValue = findColumnValue(row, ['name', 'Item name', 'product_name', 'title'])
-            categoryValue = findColumnValue(row, ['category', 'Category', 'type', 'group'])
-            priceValue = findColumnValue(row, ['price', 'Price', 'unit_price', 'cost'])
+            nameValue = findColumnValue(row, ['Item name', 'name', 'product_name', 'title'])
+            categoryValue = findColumnValue(row, ['Category', 'category', 'type', 'group'])
+            priceValue = findColumnValue(row, ['Price', 'price', 'unit_price', 'cost'])
           }
           
           if (barcodeValue === '4770237043687') {
@@ -816,8 +816,8 @@ export async function uploadSupplierDelivery(
         } catch (mappingError) {
           // Fallback to direct column search if mapping fails
           console.warn(`Supplier delivery column mapping failed, using fallback:`, mappingError)
-          barcodeValue = findColumnValue(row, ['barcode', 'Barcode', 'SKU', 'code'])
-          quantityValue = findColumnValue(row, ['quantity', 'Quantity', 'qty', 'stock'])
+          barcodeValue = findColumnValue(row, ['Barcode', 'barcode', 'code', 'SKU'])
+          quantityValue = findColumnValue(row, ['Quantity', 'quantity', 'qty', 'stock'])
           unitCostValue = findColumnValue(row, ['price', 'unit_price', 'cost', 'unit_cost'])
         }
 
