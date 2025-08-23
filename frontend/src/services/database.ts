@@ -1312,11 +1312,7 @@ function findColumnValue(row: any, possibleNames: string[]): string | null {
 export async function updateInventoryQuantitySkipMovements(storeId: string, productId: string, quantity: number): Promise<void> {
   console.log(`🔄 updateInventoryQuantitySkipMovements: storeId=${storeId}, productId=${productId}, quantity=${quantity}`)
   
-  // Additional debugging for problematic products
-  const isProblematic = ['4770275047784', '4770275047746', '4770237043687'].some(barcode => 
-    // We don't have barcode here, but we can check if this is being called in the problematic flow
-    true // Will add more specific check if needed
-  )
+  // Additional debugging for problematic products - removed unused variable
   
   try {
     const { data, error } = await supabase.rpc('update_inventory_skip_movements', {
@@ -1350,10 +1346,13 @@ export async function updateInventoryQuantitySkipMovements(storeId: string, prod
     if (data) {
       console.log(`   - Database response:`, data)
     }
-  } catch (outerError) {
+  } catch (outerError: unknown) {
     console.error('❌ OUTER CATCH - Failed to call updateInventoryQuantitySkipMovements:', outerError)
     console.error('   - Error type:', typeof outerError)
-    console.error('   - Error constructor:', outerError.constructor.name)
+    if (outerError instanceof Error) {
+      console.error('   - Error constructor:', outerError.constructor.name)
+      console.error('   - Error message:', outerError.message)
+    }
     throw outerError
   }
 }
