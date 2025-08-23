@@ -275,7 +275,7 @@ export async function deleteProduct(id: string): Promise<void> {
 // INVENTORY MANAGEMENT
 // =====================================================
 
-export async function getCurrentInventory(storeId?: string): Promise<CurrentInventory[]> {
+export async function getCurrentInventory(storeId?: string, forceRefresh: boolean = false): Promise<CurrentInventory[]> {
   let query = supabase
     .from('current_inventory')
     .select(`
@@ -287,8 +287,15 @@ export async function getCurrentInventory(storeId?: string): Promise<CurrentInve
   if (storeId) {
     query = query.eq('store_id', storeId)
   }
+  
+  // Force a fresh query if requested (bypasses any caching)
+  if (forceRefresh) {
+    query = query.order('product(name)', { ascending: true })
+  } else {
+    query = query.order('product(name)')
+  }
 
-  const { data, error } = await query.order('product(name)')
+  const { data, error } = await query
 
   if (error) throw error
   return data || []
@@ -1373,9 +1380,12 @@ export async function syncStoreToShopify(storeId: string): Promise<ShopifyStockS
     
     console.log(`🏪 SYNC: Store found - name: ${store.name}, id: ${store.id}`)
 
-    // Get current inventory for the store
-    const inventory = await getCurrentInventory(storeId)
-    console.log(`📦 SYNC: Retrieved ${inventory.length} inventory items for store ${storeId}`)
+    // Get current inventory for the store (force refresh to get latest data)
+    console.log(`🔄 SYNC: Waiting 1 second for database consistency...`)
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    const inventory = await getCurrentInventory(storeId, true)
+    console.log(`📦 SYNC: Retrieved ${inventory.length} inventory items for store ${storeId} (force refreshed)`)
     
     // Debug: Show some inventory sample for problematic barcodes
     const problematicInInventory = inventory.filter(item => 
