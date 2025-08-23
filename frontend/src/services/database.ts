@@ -876,6 +876,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
               console.log(`   - Product ID: ${product.id}`)
               console.log(`   - Product name: ${product.name}`)
               console.log(`   - Product SKU: ${product.sku}`)
+              console.log(`   - Store ID for inventory update: ${storeId}`)
+              console.log(`   - Quantity to set: ${quantity}`)
             }
           } catch (createError) {
             // Enhanced debugging for product creation errors
@@ -1296,15 +1298,26 @@ function findColumnValue(row: any, possibleNames: string[]): string | null {
 
 // Function to update inventory quantity without creating movement logs (for current stock uploads)
 export async function updateInventoryQuantitySkipMovements(storeId: string, productId: string, quantity: number): Promise<void> {
-  const { error } = await supabase.rpc('update_inventory_skip_movements', {
+  console.log(`🔄 updateInventoryQuantitySkipMovements: storeId=${storeId}, productId=${productId}, quantity=${quantity}`)
+  
+  const { data, error } = await supabase.rpc('update_inventory_skip_movements', {
     p_store_id: storeId,
     p_product_id: productId,
     p_quantity: quantity
   })
 
   if (error) {
-    console.error('Error updating inventory (skip movements):', error)
+    console.error('❌ Error updating inventory (skip movements):', error)
+    console.error('   - Store ID:', storeId)
+    console.error('   - Product ID:', productId)
+    console.error('   - Quantity:', quantity)
+    console.error('   - Full error:', error)
     throw error
+  }
+  
+  console.log(`✅ Inventory updated successfully: productId=${productId}, quantity=${quantity}`)
+  if (data) {
+    console.log(`   - Database response:`, data)
   }
 }
 
@@ -1314,14 +1327,29 @@ export async function updateInventoryQuantitySkipMovements(storeId: string, prod
 
 export async function syncStoreToShopify(storeId: string): Promise<ShopifyStockSyncResult> {
   try {
+    console.log(`🚀 SYNC: Starting sync for store ID: ${storeId}`)
+    
     // Get store information
     const store = await getStore(storeId)
     if (!store) {
       throw new Error('Store not found')
     }
+    
+    console.log(`🏪 SYNC: Store found - name: ${store.name}, id: ${store.id}`)
 
     // Get current inventory for the store
     const inventory = await getCurrentInventory(storeId)
+    console.log(`📦 SYNC: Retrieved ${inventory.length} inventory items for store ${storeId}`)
+    
+    // Debug: Show some inventory sample for problematic barcodes
+    const problematicInInventory = inventory.filter(item => 
+      ['4770275047784', '4770275047746'].includes(item.product?.barcode || '')
+    )
+    console.log(`🎯 SYNC: Found ${problematicInInventory.length} problematic products in inventory:`)
+    problematicInInventory.forEach(item => {
+      console.log(`   - ${item.product?.barcode}: ${item.product?.name} (qty: ${item.quantity})`)
+    })
+    
     if (inventory.length === 0) {
       throw new Error('No inventory found for this store')
     }
