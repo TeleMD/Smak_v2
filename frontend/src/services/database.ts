@@ -727,6 +727,7 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           console.log(`   - Quantity isNaN: ${isNaN(parseInt(quantityValue?.toString() || '0'))}`)
           console.log(`   - Row ${processedRows}/${csvData.length}`)
           console.log(`   - About to look up product by barcode...`)
+          console.log(`   - Will proceed to create/update product and inventory`)
         }
 
         // Skip rows with invalid/empty barcodes (but don't count as errors)
@@ -929,6 +930,17 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
 
       } catch (error) {
         const barcodeValue = findColumnValue(row, ['barcode', 'sku', 'code', 'product_code']) || 'Unknown'
+        
+        // Enhanced error logging for problematic barcodes
+        if (['4770237043687', '4770275047784', '4770275047746'].includes(barcodeValue || '')) {
+          console.error(`❌ CRITICAL ERROR processing problematic barcode ${barcodeValue}:`)
+          console.error(`   - Error type: ${error instanceof Error ? error.name : typeof error}`)
+          console.error(`   - Error message: ${error instanceof Error ? error.message : String(error)}`)
+          console.error(`   - Full error object:`, error)
+          console.error(`   - Row being processed:`, row)
+          console.error(`   - Processing step: Row ${processedRows}/${csvData.length}`)
+        }
+        
         results.push({
           barcode: barcodeValue,
           status: 'error',
