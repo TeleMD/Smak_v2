@@ -926,8 +926,8 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
     console.log(`   - Results count: ${results.length}`)
     
     // Check if our problematic barcodes were processed
-    const problematicBarcodes = ['4770237043687', '4770275047784', '4770275047746']
-    problematicBarcodes.forEach(barcode => {
+    const targetBarcodes = ['4770237043687', '4770275047784', '4770275047746']
+    targetBarcodes.forEach(barcode => {
       const result = results.find(r => r.barcode === barcode)
       if (result) {
         console.log(`🎯 Problematic barcode ${barcode} result:`, result)

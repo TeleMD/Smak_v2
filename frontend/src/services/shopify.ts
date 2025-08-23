@@ -552,8 +552,8 @@ export async function syncStoreStockToShopifyDirect(
   }
   
   // NEW: Check for both problematic barcodes
-  const problematicBarcodes = ['4770275047784', '4770275047746']
-  problematicBarcodes.forEach(barcode => {
+  const syncProblematicBarcodes = ['4770275047784', '4770275047746']
+  syncProblematicBarcodes.forEach(barcode => {
     const product = inventory.find(item => item.product?.barcode === barcode)
     if (product) {
       console.log(`🎯 FOUND problematic barcode ${barcode} in inventory:`)
