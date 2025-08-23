@@ -551,18 +551,22 @@ export async function syncStoreStockToShopifyDirect(
     console.log(`   - Sample barcodes:`, inventory.slice(0, 5).map(i => i.product?.barcode).filter(Boolean))
   }
   
-  // NEW: Check for the problematic barcode 4770275047784
-  const problematicProduct = inventory.find(item => item.product?.barcode === '4770275047784')
-  if (problematicProduct) {
-    console.log(`🎯 FOUND problematic barcode 4770275047784 in inventory:`)
-    console.log(`   - quantity: ${problematicProduct.quantity}`)
-    console.log(`   - reserved_quantity: ${problematicProduct.reserved_quantity}`)
-    console.log(`   - available_quantity: ${problematicProduct.available_quantity}`)
-    console.log(`   - product_id: ${problematicProduct.product_id}`)
-    console.log(`   - store_id: ${problematicProduct.store_id}`)
-  } else {
-    console.log(`❌ Problematic barcode 4770275047784 NOT FOUND in inventory list!`)
-  }
+  // NEW: Check for both problematic barcodes
+  const problematicBarcodes = ['4770275047784', '4770275047746']
+  problematicBarcodes.forEach(barcode => {
+    const product = inventory.find(item => item.product?.barcode === barcode)
+    if (product) {
+      console.log(`🎯 FOUND problematic barcode ${barcode} in inventory:`)
+      console.log(`   - name: ${product.product?.name}`)
+      console.log(`   - quantity: ${product.quantity}`)
+      console.log(`   - reserved_quantity: ${product.reserved_quantity}`)
+      console.log(`   - available_quantity: ${product.available_quantity}`)
+      console.log(`   - product_id: ${product.product_id}`)
+      console.log(`   - store_id: ${product.store_id}`)
+    } else {
+      console.log(`❌ Problematic barcode ${barcode} NOT FOUND in inventory list!`)
+    }
+  })
   
   const startTime = Date.now()
   const results: ShopifyPushResult[] = []
@@ -639,6 +643,7 @@ export async function syncStoreStockToShopifyDirect(
     '4030957351753': '10357889827147', // preparation-of-aubergines-eggs
     '4770237043687': '10790739673419', // dessert-based-on-cottage-cheese-strawberry-150-g
     '4770275047784': '67138526-b24b-4fe7-8ef2-06c60aac6f7a', // tworog-svalya-15-450g
+    '4770275047746': 'e6d625db-ab60-44b3-a04c-9a1595cfd15a', // tworog-svalya-cheese-9-450g
     // Add more as needed - this should cover many of the common products
   }
   
@@ -1127,6 +1132,71 @@ export async function validateShopifyCredentials(): Promise<{ valid: boolean; sh
 }
 
 // COMPREHENSIVE PRODUCT DIAGNOSTIC: Test specific product sync process
+// NEW: Comprehensive sync diagnosis for problematic products
+export async function diagnoseSyncIssues(storeId: string): Promise<{
+  databaseStatus: any[]
+  syncRecommendations: string[]
+  readyForSync: boolean
+}> {
+  const problematicBarcodes = ['4770275047784', '4770275047746']
+  const databaseStatus: any[] = []
+  const recommendations: string[] = []
+  
+  console.log(`🔬 COMPREHENSIVE SYNC DIAGNOSIS`)
+  console.log(`📦 Checking problematic products: ${problematicBarcodes.join(', ')}`)
+  
+  // Import supabase client
+  const { supabase } = await import('../utils/supabase')
+  
+  // Get current inventory for these products
+  const { data: inventory, error } = await supabase
+    .from('current_inventory')
+    .select(`
+      *,
+      product:products(*)
+    `)
+    .eq('store_id', storeId)
+    .in('product.barcode', problematicBarcodes)
+  
+  if (error) {
+    console.error('Error fetching inventory:', error)
+    return { databaseStatus: [], syncRecommendations: ['Database error - check connection'], readyForSync: false }
+  }
+  
+  problematicBarcodes.forEach(barcode => {
+    const inventoryItem = inventory?.find((item: any) => item.product?.barcode === barcode)
+    const status = {
+      barcode,
+      inDatabase: !!inventoryItem,
+      quantity: inventoryItem?.quantity || 0,
+      available_quantity: inventoryItem?.available_quantity || 0,
+      lastUpdated: inventoryItem?.last_updated,
+      productName: inventoryItem?.product?.name,
+      inKnownProducts: ['4770275047784', '4770275047746'].includes(barcode)
+    }
+    
+    databaseStatus.push(status)
+    
+    if (!status.inDatabase) {
+      recommendations.push(`❌ ${barcode}: Not found in database - upload CSV first`)
+    } else if (!status.inKnownProducts) {
+      recommendations.push(`⚠️ ${barcode}: Not in knownProducts mapping - sync will be slow`)
+    } else {
+      recommendations.push(`✅ ${barcode}: Ready for fast Shopify sync`)
+    }
+  })
+  
+  const readyForSync = databaseStatus.every(s => s.inDatabase && s.inKnownProducts)
+  
+  if (readyForSync) {
+    recommendations.push(`🚀 All products ready! Click "Sync to Shopify" to update.`)
+  } else {
+    recommendations.push(`📋 Complete the steps above, then run sync.`)
+  }
+  
+  return { databaseStatus, syncRecommendations: recommendations, readyForSync }
+}
+
 export async function testSingleProductUpdate(barcode: string = '4770175046139'): Promise<{
   success: boolean
   found: boolean
@@ -1163,6 +1233,7 @@ export async function testSingleProductUpdate(barcode: string = '4770175046139')
       '4770175046139': '10700461048139', // cream-cheese-bars-with-coconut
       '4770237043687': '10790739673419', // dessert-based-on-cottage-cheese-strawberry-150-g
       '4770275047784': '67138526-b24b-4fe7-8ef2-06c60aac6f7a', // tworog-svalya-15-450g
+      '4770275047746': 'e6d625db-ab60-44b3-a04c-9a1595cfd15a', // tworog-svalya-cheese-9-450g
     }
     
     console.log(`\n🔍 Step 1: Checking known products...`)

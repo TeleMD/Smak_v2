@@ -653,7 +653,22 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
       console.log(`🔍 Detected quantity columns:`, quantityColumns)
     }
     
-    // Check for our specific barcode in the CSV
+    // Check for our problematic barcodes in the CSV
+    const problematicBarcodes = ['4770237043687', '4770275047784', '4770275047746']
+    const foundBarcodes = problematicBarcodes.filter(barcode => {
+      return csvData.some(row => {
+        const keys = Object.keys(row)
+        return keys.some(key => {
+          const value = row[key]
+          return value && value.toString().includes(barcode)
+        })
+      })
+    })
+    
+    console.log(`🔍 PROBLEMATIC BARCODES CHECK:`)
+    console.log(`   - Looking for: ${problematicBarcodes.join(', ')}`)
+    console.log(`   - Found in CSV: ${foundBarcodes.length > 0 ? foundBarcodes.join(', ') : 'NONE'}`)
+    
     const targetRow = csvData.find(row => {
       const keys = Object.keys(row)
       return keys.some(key => {
@@ -696,14 +711,15 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
           quantityValue = findColumnValue(row, ['Quantity', 'quantity', 'qty', 'stock'])
         }
 
-        // Debug EVERY row to see where target barcode is lost
-        if (processedRows <= 5 || processedRows % 100 === 0 || (barcodeValue && barcodeValue.includes('4770237043687'))) {
-          console.log(`🔍 ROW ${processedRows}: barcode="${barcodeValue}", quantity="${quantityValue}"`)
+        // Debug EVERY row to see where target barcodes are lost
+        const isProblematicBarcode = barcodeValue && ['4770237043687', '4770275047784', '4770275047746'].includes(barcodeValue)
+        if (processedRows <= 5 || processedRows % 100 === 0 || isProblematicBarcode) {
+          console.log(`🔍 ROW ${processedRows}: barcode="${barcodeValue}", quantity="${quantityValue}"${isProblematicBarcode ? ' ⚠️ PROBLEMATIC!' : ''}`)
         }
 
-        // Special debugging for our target barcode
-        if (barcodeValue === '4770237043687') {
-          console.log(`🎯 PROCESSING target barcode 4770237043687:`)
+        // Special debugging for our problematic barcodes
+        if (['4770237043687', '4770275047784', '4770275047746'].includes(barcodeValue || '')) {
+          console.log(`🎯 PROCESSING problematic barcode ${barcodeValue}:`)
           console.log(`   - Row data:`, row)
           console.log(`   - Extracted barcode: "${barcodeValue}"`)
           console.log(`   - Extracted quantity: "${quantityValue}"`)
@@ -867,8 +883,11 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
         try {
           await updateInventoryQuantitySkipMovements(storeId, product.id, quantity)
           
-          if (validBarcodeValue === '4770237043687') {
-            console.log(`✅ Target barcode inventory updated successfully`)
+          if (['4770237043687', '4770275047784', '4770275047746'].includes(validBarcodeValue || '')) {
+            console.log(`✅ Problematic barcode ${validBarcodeValue} inventory updated successfully`)
+            console.log(`   - Updated to quantity: ${quantity}`)
+            console.log(`   - Product ID: ${product.id}`)
+            console.log(`   - Store ID: ${storeId}`)
           }
         } catch (inventoryError) {
           if (validBarcodeValue === '4770237043687') {
@@ -906,13 +925,16 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
     console.log(`   - Errors: ${errors}`)
     console.log(`   - Results count: ${results.length}`)
     
-    // Check if our target was processed
-    const targetResult = results.find(r => r.barcode === '4770237043687')
-    if (targetResult) {
-      console.log(`🎯 Target barcode 4770237043687 result:`, targetResult)
-    } else {
-      console.log(`❌ Target barcode 4770237043687 was NOT processed`)
-    }
+    // Check if our problematic barcodes were processed
+    const problematicBarcodes = ['4770237043687', '4770275047784', '4770275047746']
+    problematicBarcodes.forEach(barcode => {
+      const result = results.find(r => r.barcode === barcode)
+      if (result) {
+        console.log(`🎯 Problematic barcode ${barcode} result:`, result)
+      } else {
+        console.log(`❌ Problematic barcode ${barcode} was NOT processed in CSV upload`)
+      }
+    })
 
     return {
       success: true,
