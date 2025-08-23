@@ -551,6 +551,19 @@ export async function syncStoreStockToShopifyDirect(
     console.log(`   - Sample barcodes:`, inventory.slice(0, 5).map(i => i.product?.barcode).filter(Boolean))
   }
   
+  // NEW: Check for the problematic barcode 4770275047784
+  const problematicProduct = inventory.find(item => item.product?.barcode === '4770275047784')
+  if (problematicProduct) {
+    console.log(`🎯 FOUND problematic barcode 4770275047784 in inventory:`)
+    console.log(`   - quantity: ${problematicProduct.quantity}`)
+    console.log(`   - reserved_quantity: ${problematicProduct.reserved_quantity}`)
+    console.log(`   - available_quantity: ${problematicProduct.available_quantity}`)
+    console.log(`   - product_id: ${problematicProduct.product_id}`)
+    console.log(`   - store_id: ${problematicProduct.store_id}`)
+  } else {
+    console.log(`❌ Problematic barcode 4770275047784 NOT FOUND in inventory list!`)
+  }
+  
   const startTime = Date.now()
   const results: ShopifyPushResult[] = []
   let successfulUpdates = 0
@@ -625,6 +638,7 @@ export async function syncStoreStockToShopifyDirect(
     '4030957351739': '10357886779723', // ker-u-sus-eggplant-preparation
     '4030957351753': '10357889827147', // preparation-of-aubergines-eggs
     '4770237043687': '10790739673419', // dessert-based-on-cottage-cheese-strawberry-150-g
+    '4770275047784': '67138526-b24b-4fe7-8ef2-06c60aac6f7a', // tworog-svalya-15-450g
     // Add more as needed - this should cover many of the common products
   }
   
@@ -640,6 +654,17 @@ export async function syncStoreStockToShopifyDirect(
   const unknownProductItems = validInventory.filter(item => !knownProducts[item.product!.barcode!])
   
   console.log(`⚡ OPTIMIZATION: ${knownProductItems.length} known products (fast), ${unknownProductItems.length} unknown (slow search)`)
+  
+  // NEW: Log unknown products for future mapping to help prevent sync issues
+  if (unknownProductItems.length > 0) {
+    console.log(`⚠️  UNKNOWN PRODUCTS (should be added to knownProducts mapping for faster sync):`)
+    unknownProductItems.slice(0, 10).forEach((item, index) => {
+      console.log(`   ${index + 1}. '${item.product!.barcode}': 'SHOPIFY_PRODUCT_ID', // ${item.product!.name}`)
+    })
+    if (unknownProductItems.length > 10) {
+      console.log(`   ... and ${unknownProductItems.length - 10} more unknown products`)
+    }
+  }
   
   // Phase 1: Process known products FAST (direct API calls)
   console.log(`\n🚀 Phase 1: Processing ${knownProductItems.length} known products (FAST)...`)
@@ -1137,6 +1162,7 @@ export async function testSingleProductUpdate(barcode: string = '4770175046139')
     const knownProducts: Record<string, string> = {
       '4770175046139': '10700461048139', // cream-cheese-bars-with-coconut
       '4770237043687': '10790739673419', // dessert-based-on-cottage-cheese-strawberry-150-g
+      '4770275047784': '67138526-b24b-4fe7-8ef2-06c60aac6f7a', // tworog-svalya-15-450g
     }
     
     console.log(`\n🔍 Step 1: Checking known products...`)
