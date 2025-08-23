@@ -1312,24 +1312,49 @@ function findColumnValue(row: any, possibleNames: string[]): string | null {
 export async function updateInventoryQuantitySkipMovements(storeId: string, productId: string, quantity: number): Promise<void> {
   console.log(`🔄 updateInventoryQuantitySkipMovements: storeId=${storeId}, productId=${productId}, quantity=${quantity}`)
   
-  const { data, error } = await supabase.rpc('update_inventory_skip_movements', {
-    p_store_id: storeId,
-    p_product_id: productId,
-    p_quantity: quantity
-  })
-
-  if (error) {
-    console.error('❌ Error updating inventory (skip movements):', error)
-    console.error('   - Store ID:', storeId)
-    console.error('   - Product ID:', productId)
-    console.error('   - Quantity:', quantity)
-    console.error('   - Full error:', error)
-    throw error
-  }
+  // Additional debugging for problematic products
+  const isProblematic = ['4770275047784', '4770275047746', '4770237043687'].some(barcode => 
+    // We don't have barcode here, but we can check if this is being called in the problematic flow
+    true // Will add more specific check if needed
+  )
   
-  console.log(`✅ Inventory updated successfully: productId=${productId}, quantity=${quantity}`)
-  if (data) {
-    console.log(`   - Database response:`, data)
+  try {
+    const { data, error } = await supabase.rpc('update_inventory_skip_movements', {
+      p_store_id: storeId,
+      p_product_id: productId,
+      p_quantity: quantity
+    })
+
+    if (error) {
+      console.error('❌ Error updating inventory (skip movements):', error)
+      console.error('   - Store ID:', storeId)
+      console.error('   - Product ID:', productId)
+      console.error('   - Quantity:', quantity)
+      console.error('   - Error code:', error.code)
+      console.error('   - Error message:', error.message)
+      console.error('   - Error details:', error.details)
+      console.error('   - Error hint:', error.hint)
+      console.error('   - Full error object:', JSON.stringify(error, null, 2))
+      
+      // Check if this might be an RLS issue
+      if (error.message?.includes('RLS') || error.code === '42501' || error.message?.includes('permission')) {
+        console.error('🔐 POSSIBLE RLS (Row Level Security) ISSUE!')
+        console.error('   - This might be a permissions problem')
+        console.error('   - Check if the user has access to update current_inventory table')
+      }
+      
+      throw error
+    }
+    
+    console.log(`✅ Inventory updated successfully: productId=${productId}, quantity=${quantity}`)
+    if (data) {
+      console.log(`   - Database response:`, data)
+    }
+  } catch (outerError) {
+    console.error('❌ OUTER CATCH - Failed to call updateInventoryQuantitySkipMovements:', outerError)
+    console.error('   - Error type:', typeof outerError)
+    console.error('   - Error constructor:', outerError.constructor.name)
+    throw outerError
   }
 }
 
