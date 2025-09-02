@@ -6,7 +6,7 @@ import {
   InventoryAdjustmentForm, DashboardStats, ShopifyStockSyncResult,
   Supplier, NewProductLog
 } from '../types'
-import { syncStoreStockToShopifyDirect } from './shopify'
+import { enhancedSyncStoreStockToShopify } from './enhancedShopifySync'
 
 // =====================================================
 // STORE MANAGEMENT
@@ -631,16 +631,34 @@ export async function uploadCurrentStock(storeId: string, csvData: any[]): Promi
     let errors = 0
     let newProducts = 0
 
-    console.log(`🚀 CSV UPLOAD: Starting upload with ${csvData.length} rows`)
+    console.log(`🚀 CSV UPLOAD: Starting enhanced upload with ${csvData.length} rows`)
     console.log(`📋 First 3 rows sample:`, csvData.slice(0, 3))
     
-    // Check CSV column structure
+    // Check CSV column structure and detect new enhanced columns
     if (csvData.length > 0) {
       const firstRow = csvData[0]
       const columnNames = Object.keys(firstRow)
       console.log(`📊 CSV COLUMNS (${columnNames.length} total):`, columnNames)
       
-      // Check for barcode and quantity columns specifically
+      // Check for enhanced POS system columns
+      const hasItemId = columnNames.includes('Item id (Do not change)')
+      const hasVariantId = columnNames.includes('Variant id (Do not change)')
+      const hasBarcode = columnNames.includes('Barcode')
+      const hasQuantity = columnNames.includes('Quantity')
+      
+      console.log(`🔍 ENHANCED CSV DETECTION:`)
+      console.log(`   - Item ID column: ${hasItemId ? '✅' : '❌'}`)
+      console.log(`   - Variant ID column: ${hasVariantId ? '✅' : '❌'}`)
+      console.log(`   - Barcode column: ${hasBarcode ? '✅' : '❌'}`)
+      console.log(`   - Quantity column: ${hasQuantity ? '✅' : '❌'}`)
+      
+      if (hasItemId && hasVariantId) {
+        console.log(`🚀 ENHANCED MODE: Using direct POS system IDs for faster Shopify sync!`)
+      } else {
+        console.log(`⚠️ LEGACY MODE: Will use barcode-based search (slower)`)
+      }
+      
+      // Legacy column detection for fallback
       const barcodeColumns = columnNames.filter(col => 
         ['barcode', 'sku', 'code', 'product_code', 'Barcode'].some(name => 
           col.toLowerCase() === name.toLowerCase() || 
@@ -1413,8 +1431,9 @@ export async function syncStoreToShopify(storeId: string): Promise<ShopifyStockS
     })
 
     try {
-      // Perform the actual sync using DIRECT method (bypasses pagination limits)
-      const result = await syncStoreStockToShopifyDirect(storeId, store.name, inventory)
+      // Perform the actual sync using ENHANCED DYNAMIC method (eliminates hardcoded mappings)
+      console.log(`🚀 Using Enhanced Shopify Sync (dynamic mapping system)`)
+      const result = await enhancedSyncStoreStockToShopify(storeId, store.name, inventory)
 
       // Update sync job with results
       await supabase

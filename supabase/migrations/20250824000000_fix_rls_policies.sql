@@ -23,3 +23,6 @@ ALTER FUNCTION update_inventory_skip_movements SECURITY DEFINER;
 -- This ensures the function can always update inventory regardless of RLS
 CREATE POLICY "System functions can modify inventory" ON current_inventory
     FOR ALL TO postgres USING (true) WITH CHECK (true);
+
+
+
