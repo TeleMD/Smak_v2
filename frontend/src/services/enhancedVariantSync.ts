@@ -110,8 +110,7 @@ export async function enhancedVariantSyncStoreStockToShopify(
           results.push({
             barcode,
             status: 'success',
-            message: `Updated to ${quantity} units`,
-            quantity
+            message: `Updated to ${quantity} units`
           })
           successfulUpdates++
         } else {

@@ -6,7 +6,6 @@ import {
   InventoryAdjustmentForm, DashboardStats, ShopifyStockSyncResult,
   Supplier, NewProductLog
 } from '../types'
-import { enhancedSyncStoreStockToShopify } from './enhancedShopifySync'
 import { enhancedVariantSyncStoreStockToShopify } from './enhancedVariantSync'
 
 // =====================================================
