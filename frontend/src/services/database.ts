@@ -7,6 +7,7 @@ import {
   Supplier, NewProductLog
 } from '../types'
 import { enhancedSyncStoreStockToShopify } from './enhancedShopifySync'
+import { enhancedVariantSyncStoreStockToShopify } from './enhancedVariantSync'
 
 // =====================================================
 // STORE MANAGEMENT
@@ -1431,9 +1432,9 @@ export async function syncStoreToShopify(storeId: string): Promise<ShopifyStockS
     })
 
     try {
-      // Perform the actual sync using ENHANCED DYNAMIC method (eliminates hardcoded mappings)
-      console.log(`🚀 Using Enhanced Shopify Sync (dynamic mapping system)`)
-      const result = await enhancedSyncStoreStockToShopify(storeId, store.name, inventory)
+      // Perform the actual sync using ENHANCED VARIANT SYNC method (handles missing variant IDs)
+      console.log(`🚀 Using Enhanced Variant Sync (fixes missing variant IDs automatically)`)
+      const result = await enhancedVariantSyncStoreStockToShopify(storeId, store.name, inventory)
 
       // Update sync job with results
       await supabase
